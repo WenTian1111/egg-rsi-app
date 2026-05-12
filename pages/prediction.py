@@ -244,6 +244,12 @@ def _upload_mode():
                         st.info(f"{label}: N/A")
 
             st.markdown('---')
+            # Show which segmentation method was used
+            method = result.get('method', 'hsv')
+            method_label = {'hsv': '🎨 HSV 蓝色背景分割', 'edge': '✏️ 边缘检测分割'}
+            method_icon = method_label.get(method, '🔧 自适应分割')
+            st.caption(f"{method_icon} | 分割方法：{'HSV色域' if method=='hsv' else 'Canny边缘检测'}")
+            
             display_features_grid(result.get('features'))
 
             st.markdown('---')
