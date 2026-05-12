@@ -87,7 +87,9 @@ st.markdown("""
     /* Hide ALL Streamlit Cloud branding / deploy / fork badges */
     [data-testid="stDeployButton"] { display: none !important; }
     [data-testid="stToolbar"] { display: none !important; }
+    [data-testid="stToolbarActions"] { display: none !important; }
     [data-testid="stStatusWidget"] { display: none !important; }
+    [data-testid="stAppDeployButton"] { display: none !important; }
     button[kind="headerNoPadding"] { display: none !important; }
     header[data-testid="stHeader"] { display: none !important; }
 
