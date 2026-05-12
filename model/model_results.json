@@ -1,0 +1,22 @@
+{
+  "LR": {
+    "accuracy": 0.5741,
+    "macro_f1": 0.5806,
+    "macro_auc": 0.7598
+  },
+  "SVM": {
+    "accuracy": 0.6667,
+    "macro_f1": 0.7646,
+    "macro_auc": 0.8123
+  },
+  "RF": {
+    "accuracy": 0.7593,
+    "macro_f1": 0.8301,
+    "macro_auc": 0.855
+  },
+  "GBDT": {
+    "accuracy": 0.7778,
+    "macro_f1": 0.8426,
+    "macro_auc": 0.8747
+  }
+}
