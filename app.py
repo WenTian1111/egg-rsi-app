@@ -82,6 +82,12 @@ st.markdown("""
     }
 
     div[data-testid="stSidebarNav"] { display: none; }
+    footer { visibility: hidden; }
+    #MainMenu { visibility: hidden; }
+    /* Hide Streamlit Cloud deploy/fork badges */
+    .stApp [data-testid="stStatusWidget"] { display: none !important; }
+    iframe[title*="fork"] { display: none !important; }
+    a[href*="fork"] { display: none !important; }
 
     /* ═══════ HEADER = shimmer + glow ═══════ */
     .main-header {
