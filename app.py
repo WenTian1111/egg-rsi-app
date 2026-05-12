@@ -82,12 +82,12 @@ st.markdown("""
     }
 
     div[data-testid="stSidebarNav"] { display: none; }
-    footer { visibility: hidden !important; }
-    #MainMenu { visibility: hidden !important; }
+    footer { display: none !important; }
+    #MainMenu { display: none !important; }
     /* Hide ALL Streamlit Cloud branding / deploy / fork badges */
-    .stApp [data-testid="stDeployButton"] { display: none !important; }
-    .stApp [data-testid="stToolbar"] { display: none !important; }
-    .stApp [data-testid="stStatusWidget"] { display: none !important; }
+    [data-testid="stDeployButton"] { display: none !important; }
+    [data-testid="stToolbar"] { display: none !important; }
+    [data-testid="stStatusWidget"] { display: none !important; }
     button[kind="headerNoPadding"] { display: none !important; }
     header[data-testid="stHeader"] { display: none !important; }
 
