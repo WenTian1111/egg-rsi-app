@@ -1,22 +1,22 @@
-# 鸡蛋滚落稳定性分析系统 🥚
+# Egg Roll Stability Analysis System 🥚
 
-基于机器学习的鸡蛋滚落稳定性（RSI）智能预测系统。上传鸡蛋照片，自动提取 19 维形态特征，通过 SVM/RF/GBDT 模型实时预测风险等级。
+A machine learning-based intelligent prediction system for egg roll stability (RSI). Upload egg photos to automatically extract 19 morphological features and predict risk levels in real-time using SVM/RF/GBDT models.
 
-## 功能
+## Features
 
-- **📸 上传新图片** — 上传鸡蛋照片 → HSV 分割 → 特征提取 → 模型预测
-- **🎯 快速选择** — 从 90 个鸡蛋数据库中快速选择样本
-- **🔬 数据库展示** — 图像处理流水线可视化、特征雷达图、模型性能对比
-- **📊 特征重要性** — RF vs GBDT 特征重要性双柱对比
+- **📸 Upload New Image** — Upload egg photo → HSV segmentation → feature extraction → model prediction
+- **🎯 Quick Select** — Rapidly select samples from a database of 90 eggs
+- **🔬 Database View** — Image processing pipeline visualization, feature radar charts, model performance comparison
+- **📊 Feature Importance** — Dual-bar comparison of RF vs GBDT feature importance
 
-## 技术栈
+## Tech Stack
 
-- **前端**: Streamlit + Plotly
-- **视觉**: OpenCV (HSV 分割 + 特征提取)
-- **模型**: scikit-learn (SVM / RF / GBDT / LR)
-- **UI**: 深蓝科技风 CSS 动画
+- **Frontend**: Streamlit + Plotly
+- **Vision**: OpenCV (HSV segmentation + feature extraction)
+- **Models**: scikit-learn (SVM / RF / GBDT / LR)
+- **UI**: Dark tech-blue themed CSS animations
 
-## 本地运行
+## Running Locally
 
 ```bash
 git clone https://github.com/WenTian1111/egg-rsi-app.git
@@ -27,6 +27,6 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## 在线演示
+## Live Demo
 
 [Streamlit Cloud](https://egg-rsi-app.streamlit.app)
