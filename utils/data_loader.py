@@ -67,15 +67,6 @@ def load_fusion_data():
     else:
         return None
 
-    # Normalize column names: EggID → egg_id, RSI_GroupNum → RSI
-    rename_map = {}
-    if 'EggID' in df.columns:
-        rename_map['EggID'] = 'egg_id'
-    if 'RSI_GroupNum' in df.columns:
-        rename_map['RSI_GroupNum'] = 'RSI'
-    if rename_map:
-        df = df.rename(columns=rename_map)
-
     return df
 
 
