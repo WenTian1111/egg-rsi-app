@@ -1,243 +1,330 @@
 """Extract egg static features from images using OpenCV.
 Port of MATLAB Code_1.m + segmentEggFromBlueBackground logic.
-V3: Three-stage segmentation with CLAHE normalization + GrabCut fallback."""
 
+Segmentation strategy (multi-layered fallback):
+  PRIMARY:    L*a*b* + CLAHE + Otsu on b* channel (best for food/egg images)
+  Fallback 1: Edge-Guided GrabCut (adaptive rect, handles off-center eggs)
+  Fallback 2: HSV thresholding (original blue-bg fallback)
+  Fallback 3: Canny edge detection (last resort)
+"""
 import cv2
 import numpy as np
 import os
 
 
-# ─── Blue background HSV range (OpenCV: H 0-179, S 0-255, V 0-255) ───
-BLUE_HUE_LOW = 90
-BLUE_HUE_HIGH = 130
+# ─────────────────────────────────────────────
+# PRIMARY: L*a*b* + CLAHE segmentation
+# ─────────────────────────────────────────────
 
+def _segment_by_lab(img):
+    """Strategy A (PRIMARY): L*a*b* color space + CLAHE enhancement.
 
-def _apply_clahe(gray):
-    """Apply CLAHE to normalize uneven lighting on a grayscale image."""
-    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
-    return clahe.apply(gray)
-
-
-def _detect_blue_background(hsv):
-    """Check if the image has a significant blue background region."""
-    h_channel = hsv[:, :, 0].astype(np.float32)
-    blue_mask = (h_channel >= BLUE_HUE_LOW) & (h_channel <= BLUE_HUE_HIGH)
-    blue_ratio = np.sum(blue_mask) / blue_mask.size
-    return blue_ratio > 0.25
-
-
-def _hsv_segmentation(img):
+    L*a*b* separates color from intensity better than HSV for food images.
+    The b* channel (yellow ↔ blue) is excellent for separating yellowish
+    eggshell from typical backgrounds.
+    CLAHE on the L channel handles uneven lighting robustly.
     """
-    Stage 1: HSV-based segmentation.
-    Method A (blue bg): exact blue hue range → invert.
-    Method B (other): adaptive S+V Otsu thresholds with CLAHE-normalized V.
-    """
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    h_channel = hsv[:, :, 0].astype(np.float32)
-    s_channel = hsv[:, :, 1].astype(np.float32) / 255.0
-    v_channel = hsv[:, :, 2].astype(np.float32) / 255.0
+    h, w = img.shape[:2]
 
-    # ── Method A: Blue-hue background removal ──
-    if _detect_blue_background(hsv):
-        bg_h = (h_channel >= BLUE_HUE_LOW) & (h_channel <= BLUE_HUE_HIGH)
-        bg_s = s_channel > 0.15
-        bg_v = v_channel > 0.15
-        egg_mask = (~(bg_h & bg_s & bg_v)).astype(np.uint8) * 255
-        return egg_mask
+    # 1. Convert to L*a*b*
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    l_ch, a_ch, b_ch = cv2.split(lab)
 
-    # ── Method B: No blue background ──
-    # Use CLAHE-normalized grayscale for better shadow handling
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    norm = _apply_clahe(gray)
+    # 2. CLAHE on L channel → handles uneven lighting
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    l_eq = clahe.apply(l_ch)
 
-    # Adaptive thresholding (handles uneven lighting)
-    binary = cv2.adaptiveThreshold(
-        norm, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY, blockSize=31, C=5
+    # 3. Merge back enhanced L with a, b
+    lab_eq = cv2.merge([l_eq, a_ch, b_ch])
+    lab_eq_rgb = cv2.cvtColor(lab_eq, cv2.COLOR_LAB2BGR)
+    lab_eq_lab = cv2.cvtColor(lab_eq_rgb, cv2.COLOR_BGR2LAB)
+    _, _, b_eq = cv2.split(lab_eq_lab)
+
+    # 4. Gaussian blur on b* channel
+    b_blur = cv2.GaussianBlur(b_eq, (7, 7), 0)
+
+    # 5. Otsu thresholding on b* channel
+    #    Eggs are yellowish → low b* values → invert if needed
+    _, b_mask = cv2.threshold(
+        b_blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )
 
-    # The egg is usually the darker object on a lighter background
-    # or lighter object on darker background → auto-detect
-    corner_pixels = [binary[5, 5], binary[5, -5], binary[-5, 5], binary[-5, -5]]
-    if sum(p > 127 for p in corner_pixels) >= 2:
-        binary = cv2.bitwise_not(binary)
+    # 6. Check which side of the threshold contains the egg
+    #    Egg region tends to be less blue → lower b* → more likely 'background' in Otsu
+    #    Check which region is more central/compact
+    center_h, center_w = h // 2, w // 2
+    center_roi = b_mask[center_h - h//6:center_h + h//6,
+                        center_w - w//6:center_w + w//6]
+    if center_roi.size > 0:
+        center_fg_ratio = np.sum(center_roi > 0) / center_roi.size
+        # If less than 30% of the center is "foreground", invert
+        if center_fg_ratio < 0.3:
+            b_mask = 255 - b_mask
 
-    # Fall back to Otsu if adaptive threshold produces garbage
-    # (too much noise → too many contours)
-    contours_check, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if len(contours_check) > 30:  # noisy result
-        _, binary = cv2.threshold(norm, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        corner = [binary[5, 5], binary[5, -5], binary[-5, 5], binary[-5, -5]]
-        if sum(p > 127 for p in corner) >= 2:
-            binary = cv2.bitwise_not(binary)
+    # 7. Morphological cleanup
+    kernel_open = np.ones((5, 5), np.uint8)
+    kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+    b_mask = cv2.morphologyEx(b_mask, cv2.MORPH_OPEN, kernel_open)
+    b_mask = cv2.morphologyEx(b_mask, cv2.MORPH_CLOSE, kernel_close)
 
-    return binary
+    # 8. Fill holes
+    b_mask = _fill_holes(b_mask)
+
+    # 9. Find largest contour
+    contours, _ = cv2.findContours(b_mask, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None, None, False
+
+    largest = max(contours, key=cv2.contourArea)
+    clean = np.zeros_like(b_mask)
+    cv2.drawContours(clean, [largest], -1, 255, -1)
+    clean = cv2.morphologyEx(clean, cv2.MORPH_CLOSE,
+                             cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
+    return clean, largest, True
 
 
-def _edge_segmentation(img):
-    """
-    Stage 2: Edge-based segmentation (fallback for non-blue backgrounds
-    or when HSV fails). Uses CLAHE + Canny for better edge detection
-    under uneven lighting.
+# ─────────────────────────────────────────────
+# FALLBACK 1: Edge-Guided GrabCut
+# ─────────────────────────────────────────────
+
+def _segment_by_edge_guided_grabcut(img):
+    """Strategy B: Edge-guided GrabCut with adaptive initialization.
+
+    Instead of a fixed center rect (which fails for off-center eggs),
+    uses edge detection to locate the largest foreground object,
+    then initializes GrabCut with its bounding box.
+
+    This handles eggs near edges, off-center, or in complex backgrounds.
     """
     h, w = img.shape[:2]
+
+    # 1. Edge detection to find candidate regions
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # Normalize lighting
-    norm = _apply_clahe(gray)
-    blurred = cv2.GaussianBlur(norm, (7, 7), 1.5)
-
-    # Compute adaptive Canny thresholds based on image statistics
-    med = np.median(blurred)
-    low = max(10, int(0.3 * med))
-    high = min(255, int(1.2 * med))
-    edges = cv2.Canny(blurred, low, high)
-
-    # Aggressive closing to ensure egg boundary is a closed loop
-    ksize = max(5, min(15, w // 40, h // 40))
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (ksize, ksize))
-    closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel, iterations=3)
-
-    # Fill holes by finding the largest contour
-    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return None
-
-    mask = np.zeros_like(gray)
-    largest = max(contours, key=cv2.contourArea)
-    cv2.drawContours(mask, [largest], -1, 255, -1)
-
-    # Final close to fill any remaining holes
-    fill_k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, fill_k)
-
-    return mask
-
-
-def _grabcut_segmentation(img):
-    """
-    Stage 3: GrabCut segmentation (ultimate fallback for complex backgrounds).
-    Requires manual rectangle initialization based on image center.
-    """
-    h, w = img.shape[:2]
-    # Place an initial rectangle covering the central 80% of the image
-    rect = (int(w * 0.1), int(h * 0.1), int(w * 0.8), int(h * 0.8))
-
-    mask = np.zeros(img.shape[:2], np.uint8)
-    bgd_model = np.zeros((1, 65), np.float64)
-    fgd_model = np.zeros((1, 65), np.float64)
-
-    cv2.grabCut(img, mask, rect, bgd_model, fgd_model, 5, cv2.GC_INIT_WITH_RECT)
-
-    # GC_FGD = 1, GC_PR_FGD = 3 → treat both as foreground
-    result_mask = np.where((mask == 1) | (mask == 3), 255, 0).astype(np.uint8)
-
-    # Clean up
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-    result_mask = cv2.morphologyEx(result_mask, cv2.MORPH_OPEN, kernel)
-    result_mask = cv2.morphologyEx(result_mask, cv2.MORPH_CLOSE, kernel)
-
-    return result_mask
-
-
-def _clean_mask(binary_mask):
-    """Clean a binary mask: remove noise, fill holes, keep largest component."""
+    # Use adaptive threshold instead of Canny for more robust detection
+    thresh = cv2.adaptiveThreshold(
+        blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV, 31, 4
+    )
     kernel = np.ones((5, 5), np.uint8)
-    cleaned = cv2.morphologyEx(binary_mask, cv2.MORPH_OPEN, kernel)
-    cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, kernel)
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
 
-    contours, _ = cv2.findContours(cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # 2. Find the largest contour
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
-        return None, None
+        return None, None, False
 
     largest = max(contours, key=cv2.contourArea)
-    final_mask = np.zeros_like(cleaned)
-    cv2.drawContours(final_mask, [largest], -1, 255, -1)
-    final_mask = cv2.morphologyEx(final_mask, cv2.MORPH_CLOSE,
-                                  cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
+    x, y, cw, ch = cv2.boundingRect(largest)
 
-    return final_mask, largest
+    # 3. Expand rect slightly (15% margin), clamped to image bounds
+    margin_x = max(10, int(cw * 0.15))
+    margin_y = max(10, int(ch * 0.15))
+    rx = max(0, x - margin_x)
+    ry = max(0, y - margin_y)
+    rw = min(w - rx, cw + 2 * margin_x)
+    rh = min(h - ry, ch + 2 * margin_y)
+
+    # Minimum rect size check
+    if rw < 20 or rh < 20:
+        return None, None, False
+
+    rect = (rx, ry, rw, rh)
+
+    # 4. Run GrabCut with the adaptive rect
+    mask_gc = np.zeros((h, w), np.uint8)
+    bgd = np.zeros((1, 65), np.float64)
+    fgd = np.zeros((1, 65), np.float64)
+    cv2.grabCut(img, mask_gc, rect, bgd, fgd, 7, cv2.GC_INIT_WITH_RECT)
+
+    # 5. Post-process: keep only the most likely foreground region
+    bin_mask = np.where((mask_gc == 2) | (mask_gc == 0), 0, 1).astype(np.uint8) * 255
+    bin_mask = cv2.morphologyEx(bin_mask, cv2.MORPH_OPEN,
+                                np.ones((5, 5), np.uint8))
+    bin_mask = cv2.morphologyEx(bin_mask, cv2.MORPH_CLOSE,
+                                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
+    bin_mask = _fill_holes(bin_mask)
+
+    contours, _ = cv2.findContours(bin_mask, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None, None, False
+
+    largest = max(contours, key=cv2.contourArea)
+    clean = np.zeros_like(bin_mask)
+    cv2.drawContours(clean, [largest], -1, 255, -1)
+    return clean, largest, True
 
 
-def _assess_mask_quality(mask, img_shape):
-    """Check if the segmented mask is reasonable."""
-    if mask is None:
-        return False
+# ─────────────────────────────────────────────
+# FALLBACK 2: HSV thresholding
+# ─────────────────────────────────────────────
+
+def _segment_by_hsv(img):
+    """Strategy C: HSV threshold segmentation (fallback for blue-bg images)."""
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    s = hsv[:, :, 1].astype(np.float32) / 255.0
+    v = hsv[:, :, 2].astype(np.float32) / 255.0
+
+    s_u = (s * 255).astype(np.uint8)
+    tS = cv2.threshold(s_u, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[0] / 255.0
+    s_th = max(0.10, min(0.60, tS * 1.05))
+
+    v_u = (v * 255).astype(np.uint8)
+    tV = cv2.threshold(v_u, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[0] / 255.0
+    v_th = min(0.95, max(0.30, tV * 0.85))
+
+    binary = ((s < s_th) & (v > v_th)).astype(np.uint8) * 255
+    kernel = np.ones((5, 5), np.uint8)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None, None, False
+    largest = max(contours, key=cv2.contourArea)
+    clean = np.zeros_like(binary)
+    cv2.drawContours(clean, [largest], -1, 255, -1)
+    clean = cv2.morphologyEx(clean, cv2.MORPH_CLOSE,
+                             cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
+    return clean, largest, True
+
+
+# ─────────────────────────────────────────────
+# FALLBACK 3: Canny edge detection
+# ─────────────────────────────────────────────
+
+def _segment_by_edge(img):
+    """Strategy D: Canny edge detection (last resort)."""
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blur, 50, 150)
+    kernel = np.ones((3, 3), np.uint8)
+    dilated = cv2.dilate(edges, kernel, iterations=3)
+
+    contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None, None, False
+    largest = max(contours, key=cv2.contourArea)
+    mask = np.zeros(gray.shape, np.uint8)
+    cv2.drawContours(mask, [largest], -1, 255, -1)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE,
+                            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
+    return mask, largest, True
+
+
+# ─────────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────────
+
+def _fill_holes(mask):
+    """Fill small holes in a binary mask using floodfill."""
+    h, w = mask.shape
+    mask_ext = np.zeros((h + 2, w + 2), np.uint8)
+    mask_ext[1:-1, 1:-1] = mask
+    cv2.floodFill(mask_ext, None, (0, 0), 255)
+    mask_inv = 255 - mask_ext[1:-1, 1:-1]
+    return mask | mask_inv
+
+
+def _evaluate_mask_quality(mask):
+    """Check if mask is plausible (egg-like). Returns quality score 0-1."""
     area = cv2.countNonZero(mask)
-    total = img_shape[0] * img_shape[1]
-    ratio = area / total
-    return 0.03 < ratio < 0.80  # slightly more permissive than V2
+    h, w = mask.shape
+    total = h * w
+    ratio = area / total if total > 0 else 0
+    if ratio < 0.01 or ratio > 0.95:
+        return 0.0
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return 0.0
+    largest = max(contours, key=cv2.contourArea)
+    area_contour = cv2.contourArea(largest)
+    if area_contour < 1:
+        return 0.0
+
+    # Solidity test
+    hull = cv2.convexHull(largest)
+    hull_area = cv2.contourArea(hull)
+    solidity = min(1.0, area / max(hull_area, 1))
+
+    # Compactness test: a good egg should have reasonable circularity
+    perimeter = cv2.arcLength(largest, closed=True)
+    circularity = 4 * np.pi * area / max(perimeter**2, 1) if perimeter > 0 else 0
+
+    # Combined score
+    score = min(1.0, (solidity * 0.6 + (1 - abs(circularity - 0.5)) * 0.4))
+
+    if score < 0.2:
+        return 0.0
+    return score
 
 
-def segment_egg(img):
+def _segment_egg_multi_strategy(img):
+    """Multi-strategy egg segmentation with fallback chain.
+
+    PRIMARY:    L*a*b* + CLAHE (best for food/egg images, handles uneven lighting)
+    Fallback 1: Edge-Guided GrabCut (handles off-center/complex backgrounds)
+    Fallback 2: HSV threshold (blue background images)
+    Fallback 3: Canny edge detection (last resort)
+    Returns (clean_mask, largest_contour, strategy_name, warning).
     """
-    Three-stage egg segmentation pipeline:
-    1. HSV-based segmentation (works well for blue/dark backgrounds)
-    2. Edge-based segmentation (general purpose, CLAHE normalized)
-    3. GrabCut (ultimate fallback for complex backgrounds)
-    
-    Returns (mask, largest_contour, method_used, debug_images).
-    """
-    debug = {}
-    results = []
+    strategies = [
+        ('L*a*b*', _segment_by_lab),
+        ('Edge+GrabCut', _segment_by_edge_guided_grabcut),
+        ('HSV', _segment_by_hsv),
+        ('Edge', _segment_by_edge),
+    ]
 
-    # Stage 1: HSV segmentation
-    hsv_mask = _hsv_segmentation(img)
-    debug['hsv'] = hsv_mask
-    mask1, contour1 = _clean_mask(hsv_mask)
-    results.append((mask1, contour1, 'hsv', _assess_mask_quality(mask1, img.shape)))
+    for name, func in strategies:
+        mask, contour, ok = func(img)
+        if ok:
+            quality = _evaluate_mask_quality(mask)
+            if quality > 0.1:
+                return mask, contour, name, None
 
-    # Stage 2: Edge-based segmentation (if needed)
-    if not any(q for _, _, _, q in results):
-        edge_mask = _edge_segmentation(img)
-        debug['edge'] = edge_mask
-        mask2, contour2 = _clean_mask(edge_mask) if edge_mask is not None else (None, None)
-        results.append((mask2, contour2, 'edge', _assess_mask_quality(mask2, img.shape)))
+    return None, None, None, '所有分割策略均失败'
 
-    # Stage 3: GrabCut (if everything above failed)
-    if not any(q for _, _, _, q in results):
-        grabcut_mask = _grabcut_segmentation(img)
-        debug['grabcut'] = grabcut_mask
-        mask3, contour3 = _clean_mask(grabcut_mask)
-        results.append((mask3, contour3, 'grabcut', _assess_mask_quality(mask3, img.shape)))
 
-    # Return the best result
-    for mask, contour, method, quality in results:
-        if quality and mask is not None and contour is not None:
-            return mask, contour, method, debug
-
-    # Absolute fallback: return the one with largest area
-    best = max(results, key=lambda r: cv2.countNonZero(r[0]) if r[0] is not None else 0)
-    mask, contour, method = best[0], best[1], best[2]
-    return mask, contour, method, debug
-
+# ─────────────────────────────────────────────
+# PUBLIC API
+# ─────────────────────────────────────────────
 
 def extract_features_from_image(image_path):
-    """Extract the 19 static features from an egg image file."""
+    """Extract the 19 static features from an egg image."""
     if not os.path.exists(image_path):
         return None
-
     img = cv2.imread(image_path)
     if img is None:
         return None
-
-    mask, contour, method, _ = segment_egg(img)
+    mask, contour, _, _ = _segment_egg_multi_strategy(img)
     if mask is None or contour is None:
         return None
-
     return _compute_features(mask, contour)
 
 
 def process_uploaded_image(uploaded_file):
+    """Full pipeline for uploaded egg photos.
+
+    Returns dict with:
+      - 'steps': dict of intermediate images
+      - 'contour_image': the extracted contour image (numpy array)
+      - 'features': dict of 19 static features
+      - 'success': bool
+      - 'error': error message if failed
+      - 'warning': warning message if segmentation quality is suspect
+      - 'strategy': the segmentation strategy that succeeded
     """
-    Full pipeline for uploaded egg photos.
-    Three-stage segmentation: HSV → Edge → GrabCut.
-    Returns dict with steps, features, and debug info.
-    """
-    result = {'success': False, 'steps': {}, 'features': None, 'error': '', 'method': ''}
+    result = {'success': False, 'steps': {}, 'features': None,
+              'error': '', 'warning': None, 'strategy': None}
 
     try:
-        # Read image
         if isinstance(uploaded_file, str):
             img = cv2.imread(uploaded_file)
         else:
@@ -249,39 +336,37 @@ def process_uploaded_image(uploaded_file):
             return result
 
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-        # Step 1: Original
         result['steps']['original'] = img_rgb
+        result['steps']['grayscale'] = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
 
-        # Step 2: Grayscale + CLAHE-normalized (for display)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        norm = _apply_clahe(gray)
-        result['steps']['grayscale'] = norm
+        mask, contour, strategy, error = _segment_egg_multi_strategy(img)
+        result['strategy'] = strategy
 
-        # Step 3: Three-stage segmentation
-        mask, largest_contour, method, debug = segment_egg(img)
-        result['method'] = method
-
-        if mask is None or largest_contour is None:
-            result['error'] = '未能在图像中检测到鸡蛋区域（三阶段分割均失败）'
+        if mask is None or contour is None:
+            result['error'] = error or '未能在图像中检测到鸡蛋区域'
             return result
+
+        quality = _evaluate_mask_quality(mask)
+        if quality < 0.3:
+            result['warning'] = (
+                f'分割质量较低（{quality:.2f}），可能影响特征准确性，'
+                f'建议使用蓝色背景或高对比度图片'
+            )
 
         result['steps']['hsv_mask'] = mask
 
-        # Step 4: Contour visualization
         contour_viz = img_rgb.copy()
-        cv2.drawContours(contour_viz, [largest_contour], -1, (255, 0, 0), 3)
+        cv2.drawContours(contour_viz, [contour], -1, (255, 0, 0), 3)
         M = cv2.moments(mask)
         if M['m00'] > 0:
             cx = int(M['m10'] / M['m00'])
             cy = int(M['m01'] / M['m00'])
             cv2.circle(contour_viz, (cx, cy), 8, (255, 0, 0), -1)
-        x, y, w, h = cv2.boundingRect(largest_contour)
+        x, y, w, h = cv2.boundingRect(contour)
         cv2.rectangle(contour_viz, (x, y), (x + w, y + h), (255, 255, 0), 3)
         result['steps']['contour_viz'] = contour_viz
 
-        # Compute features
-        features = _compute_features(mask, largest_contour)
+        features = _compute_features(mask, contour)
         if features is None:
             result['error'] = '特征提取失败'
             return result
@@ -303,7 +388,6 @@ def _compute_features(mask, contour):
 
     moments = cv2.moments(mask)
     hu = cv2.HuMoments(moments).flatten()
-    # NOTE: Raw Hu moments (no log-transform), matching MATLAB Code_1.m and training data.
 
     area = cv2.countNonZero(mask)
     perimeter = cv2.arcLength(contour, closed=True)
@@ -317,9 +401,11 @@ def _compute_features(mask, contour):
         minor = min(ma, mi)
     else:
         major = np.sqrt(2 * (moments['mu20'] + moments['mu02'] + np.sqrt(
-            (moments['mu20'] - moments['mu02'])**2 + 4 * moments['mu11']**2)) / max(moments['m00'], 1))
+            (moments['mu20'] - moments['mu02'])**2 + 4 * moments['mu11']**2
+        )) / max(moments['m00'], 1))
         minor = np.sqrt(2 * (moments['mu20'] + moments['mu02'] - np.sqrt(
-            (moments['mu20'] - moments['mu02'])**2 + 4 * moments['mu11']**2)) / max(moments['m00'], 1))
+            (moments['mu20'] - moments['mu02'])**2 + 4 * moments['mu11']**2
+        )) / max(moments['m00'], 1))
 
     equiv_diameter = np.sqrt(4 * area / np.pi)
     eccentricity = np.sqrt(1 - (minor / max(major, 1))**2)
