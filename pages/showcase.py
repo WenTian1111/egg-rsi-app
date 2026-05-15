@@ -40,6 +40,8 @@ def _show_pipeline_tab(df):
 
     try:
         img_paths = get_processing_images()
+        if img_paths is None:
+            img_paths = {}
     except Exception as e:
         st.warning(f"无法加载处理图像: {str(e)}")
         img_paths = {}
