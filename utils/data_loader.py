@@ -127,46 +127,44 @@ def get_egg_image_path(egg_id):
     return os.path.join(DATA_DIR, 'egg_images', f'{egg_id}号鸡蛋轮廓.jpg')
 
 
+def get_processing_images(egg_id=1):
+    """返回处理流水线图像字典, 兼容 showcase 页面的旧接口。"""
+    return generate_pipeline_images(egg_id)
+
+
+from utils.feature_extraction import _segment_egg_multi_strategy
+
+
 def generate_pipeline_images(egg_id):
     """
     Generate 4-step pipeline images from the egg contour image.
     Returns dict of step_key → numpy array (BGR).
     """
+    from utils.feature_extraction import _segment_egg_multi_strategy
     img_path = get_egg_image_path(egg_id)
     img = cv2.imread(img_path)
     if img is None:
         return None
 
-    h, w = img.shape[:2]
-
-    # Original
     original = img.copy()
-
-    # Grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray_bgr = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
 
-    # Binary mask
-    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    # Ensure white foreground on black bg
-    corner_pixels = [binary[5, 5], binary[5, w-5], binary[h-5, 5], binary[h-5, w-5]]
-    if sum(p > 127 for p in corner_pixels) >= 2:
-        binary = cv2.bitwise_not(binary)
-    mask_bgr = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+    mask, contour, strategy, error = _segment_egg_multi_strategy(img)
+    if mask is None or contour is None:
+        return None
 
-    # Contour + centroid + bounding box
-    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    mask_bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+
     contour_viz = original.copy()
-    if contours:
-        largest = max(contours, key=cv2.contourArea)
-        cv2.drawContours(contour_viz, [largest], -1, (255, 0, 0), 3)
-        M = cv2.moments(binary)
-        if M['m00'] > 0:
-            cx = int(M['m10'] / M['m00'])
-            cy = int(M['m01'] / M['m00'])
-            cv2.circle(contour_viz, (cx, cy), 8, (255, 0, 0), -1)
-        x, y, bw, bh = cv2.boundingRect(largest)
-        cv2.rectangle(contour_viz, (x, y), (x + bw, y + bh), (255, 255, 0), 3)
+    cv2.drawContours(contour_viz, [contour], -1, (255, 0, 0), 3)
+    M = cv2.moments(mask)
+    if M['m00'] > 0:
+        cx = int(M['m10'] / M['m00'])
+        cy = int(M['m01'] / M['m00'])
+        cv2.circle(contour_viz, (cx, cy), 8, (255, 0, 0), -1)
+    x, y, bw, bh = cv2.boundingRect(contour)
+    cv2.rectangle(contour_viz, (x, y), (x + bw, y + bh), (255, 255, 0), 3)
 
     return {
         'original': original,
