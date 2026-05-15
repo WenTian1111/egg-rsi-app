@@ -2,11 +2,12 @@
 Port of MATLAB Code_1.m + segmentEggFromBlueBackground logic.
 
 Segmentation strategy (multi-layered fallback):
-  PRIMARY:    灰度 Otsu + CLAHE (最优: 白/浅色背景的鸡蛋照)
-  Fallback 1: 渐进腐蚀法 (类二值图 + 所有大组件连到边界时)
-  Fallback 2: L*a*b* + b通道 Otsu (最优: 彩色/复杂背景)
-  Fallback 3: 边缘引导 GrabCut (自适应矩形, 修复了崩溃问题)
-  Fallback 4: Canny 边缘检测 (最后手段)
+  PRIMARY:    GrabCut 固定中心矩形 (原V3方案, 居中鸡蛋最优)
+  Fallback 1: 灰度 Otsu + 连通筛选 (检测鸡蛋亮/暗方向)
+  Fallback 2: 渐进腐蚀法 (类二值图)
+  Fallback 3: L*a*b* + b通道 (彩色/复杂背景)
+  Fallback 4: 边缘引导 GrabCut (自适应矩形)
+  Fallback 5: Canny 边缘检测 (最后手段)
 """
 import cv2
 import numpy as np
@@ -14,12 +15,57 @@ import os
 
 
 # ═══════════════════════════════════════════════
-# PRIMARY: 灰度 Otsu + CLAHE
+# PRIMARY: GrabCut 固定中心矩形
+# ═══════════════════════════════════════════════
+
+def _segment_by_grabcut_center(img):
+    """Strategy A (PRIMARY): 固定中心矩形 GrabCut.
+    先降采样到 max(w,h) <= 768 加速, 再恢复.
+    """
+    h, w = img.shape[:2]
+    scale = 768.0 / max(h, w) if max(h, w) > 768 else 1.0
+    if scale < 1.0:
+        small = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
+        sh, sw = small.shape[:2]
+    else:
+        small = img
+        sh, sw = h, w
+
+    margin_x = max(20, int(sw * 0.10))
+    margin_y = max(20, int(sh * 0.10))
+    rect = (margin_x, margin_y, sw - 2*margin_x, sh - 2*margin_y)
+    if rect[2] < 40 or rect[3] < 40:
+        return None, None, False
+
+    try:
+        mask_gc = np.zeros((sh, sw), np.uint8)
+        bgd = np.zeros((1, 65), np.float64)
+        fgd = np.zeros((1, 65), np.float64)
+        cv2.grabCut(small, mask_gc, rect, bgd, fgd, 5, cv2.GC_INIT_WITH_RECT)
+    except cv2.error:
+        return None, None, False
+
+    bin_mask = np.where((mask_gc == 2) | (mask_gc == 0), 0, 1).astype(np.uint8) * 255
+    if scale < 1.0:
+        bin_mask = cv2.resize(bin_mask, (w, h), interpolation=cv2.INTER_NEAREST)
+
+    bin_mask = cv2.morphologyEx(bin_mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+    bin_mask = cv2.morphologyEx(bin_mask, cv2.MORPH_CLOSE,
+                                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
+    bin_mask = _fill_holes(bin_mask)
+    binary, largest = _keep_largest_contour(bin_mask)
+    if binary is None:
+        return None, None, False
+    return binary, largest, True
+
+
+# ═══════════════════════════════════════════════
+# FALLBACK 1: 灰度 Otsu + 连通筛选
 # ═══════════════════════════════════════════════
 
 def _segment_by_grayscale_otsu(img):
-    """Strategy A (PRIMARY): 灰度 Otsu 阈值分割。
-    自动检测鸡蛋是亮是暗，同时试 BINARY 和 BINARY_INV。
+    """Strategy B: 灰度 Otsu 阈值分割.
+    自动检测鸡蛋是亮是暗，同时试 BINARY 和 BINARY_INV.
     """
     h, w = img.shape[:2]
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -27,7 +73,6 @@ def _segment_by_grayscale_otsu(img):
     enhanced = clahe.apply(gray)
     blurred = cv2.GaussianBlur(enhanced, (7, 7), 0)
 
-    # 同时试两个方向: 鸡蛋可能比背景暗(INV)或比背景亮(plain)
     best_mask, best_contour = None, None
     for use_inv in [True, False]:
         flag = cv2.THRESH_BINARY_INV if use_inv else cv2.THRESH_BINARY
@@ -51,18 +96,16 @@ def _segment_by_grayscale_otsu(img):
 
 
 # ═══════════════════════════════════════════════
-# FALLBACK A2: 渐进腐蚀法
+# FALLBACK 2: 渐进腐蚀法
 # ═══════════════════════════════════════════════
 
 def _segment_by_binary_erosion(img):
-    """Strategy A2: 针对类二值图的渐进腐蚀法。
-    当 Otsu 产生完美分割但所有大组件都连接到边界时使用。
-    逐步腐蚀直到鸡蛋与边界断开 → 取最大组件 → 膨胀恢复。
+    """Strategy C: 针对类二值图的渐进腐蚀法.
+    逐步腐蚀直到鸡蛋与边界断开 → 取最大组件 → 膨胀恢复.
     """
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-
     h, w = binary.shape
     kernel = np.ones((3, 3), np.uint8)
     binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
@@ -87,19 +130,18 @@ def _segment_by_binary_erosion(img):
             clean_mask = cv2.morphologyEx(clean_mask, cv2.MORPH_CLOSE,
                                           cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
             clean_mask = _fill_holes(clean_mask)
-            contours2, _ = cv2.findContours(clean_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            if contours2:
-                largest = max(contours2, key=cv2.contourArea)
-                return clean_mask, largest, True
+            cnt2, _ = cv2.findContours(clean_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if cnt2:
+                return clean_mask, max(cnt2, key=cv2.contourArea), True
     return None, None, False
 
 
 # ═══════════════════════════════════════════════
-# FALLBACK B: L*a*b* 颜色分割
+# FALLBACK 3: L*a*b* 颜色分割
 # ═══════════════════════════════════════════════
 
 def _segment_by_lab(img):
-    """Strategy B: L*a*b* 色彩空间分割 (彩色/复杂背景)."""
+    """Strategy D: L*a*b* 色彩空间分割 (彩色/复杂背景)."""
     h, w = img.shape[:2]
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     l_ch, a_ch, b_ch = cv2.split(lab)
@@ -115,11 +157,11 @@ def _segment_by_lab(img):
     center_fg = np.mean(b_mask[h//3:2*h//3, w//3:2*w//3] > 0)
     if center_fg < 0.3:
         b_mask = 255 - b_mask
-
     b_mask = cv2.morphologyEx(b_mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
-    b_mask = _clean_connected_components(b_mask, h, w)
-    if b_mask[0] is not None:
-        m, c, _ = b_mask
+
+    result = _clean_connected_components(b_mask, h, w)
+    if result[0] is not None:
+        m, _, _ = result
         m2 = cv2.morphologyEx(m, cv2.MORPH_CLOSE,
                                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
         m2 = _fill_holes(m2)
@@ -130,11 +172,11 @@ def _segment_by_lab(img):
 
 
 # ═══════════════════════════════════════════════
-# FALLBACK C: 边缘引导 GrabCut (修复崩溃)
+# FALLBACK 4: 边缘引导 GrabCut
 # ═══════════════════════════════════════════════
 
 def _segment_by_edge_guided_grabcut(img):
-    """Strategy C: 边缘引导 GrabCut (修复崩溃版)."""
+    """Strategy E: 边缘引导 GrabCut (修复崩溃版)."""
     h, w = img.shape[:2]
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -146,16 +188,13 @@ def _segment_by_edge_guided_grabcut(img):
         return None, None, False
     largest = max(contours, key=cv2.contourArea)
     x, y, cw, ch = cv2.boundingRect(largest)
-
     margin_x = max(30, int(cw * 0.30))
     margin_y = max(30, int(ch * 0.30))
     rx = max(0, x - margin_x)
     ry = max(0, y - margin_y)
     rw = min(w - rx, cw + 2 * margin_x)
     rh = min(h - ry, ch + 2 * margin_y)
-
-    MIN_RECT = 40
-    if rw < MIN_RECT or rh < MIN_RECT:
+    if rw < 40 or rh < 40:
         return None, None, False
     roi = gray[ry:ry+rh, rx:rx+rw]
     if roi.size == 0 or np.std(roi) < 5:
@@ -174,24 +213,21 @@ def _segment_by_edge_guided_grabcut(img):
     bin_mask = cv2.morphologyEx(bin_mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
     bin_mask = cv2.morphologyEx(bin_mask, cv2.MORPH_CLOSE,
                                 cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
-    bin_mask = _fill_holes(bin_mask)
-    bin_mask, largest = _keep_largest_contour(bin_mask)
-    if bin_mask is None:
+    bin_mask2, largest = _keep_largest_contour(bin_mask)
+    if bin_mask2 is None:
         return None, None, False
-    bin_mask = cv2.morphologyEx(bin_mask, cv2.MORPH_CLOSE,
-                                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)))
-    cnt2, _ = cv2.findContours(bin_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cnt2, _ = cv2.findContours(bin_mask2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not cnt2:
         return None, None, False
-    return bin_mask, max(cnt2, key=cv2.contourArea), True
+    return bin_mask2, max(cnt2, key=cv2.contourArea), True
 
 
 # ═══════════════════════════════════════════════
-# FALLBACK D: Canny 边缘检测
+# FALLBACK 5: Canny 边缘检测
 # ═══════════════════════════════════════════════
 
 def _segment_by_edge(img):
-    """Strategy D: Canny 边缘检测 (最后手段)."""
+    """Strategy F: Canny 边缘检测 (最后手段)."""
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
     edges = cv2.Canny(blur, 50, 150)
@@ -249,10 +285,10 @@ def _clean_connected_components(binary, h, w):
     binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE,
                               cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
     binary = _fill_holes(binary)
-    contours2, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours2:
+    cnt2, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnt2:
         return None, None, False
-    return binary, max(contours2, key=cv2.contourArea), True
+    return binary, max(cnt2, key=cv2.contourArea), True
 
 
 def _evaluate_mask_quality(mask):
@@ -263,22 +299,18 @@ def _evaluate_mask_quality(mask):
     ratio = area / total if total > 0 else 0
     if ratio < 0.01 or ratio > 0.90:
         return 0.0
-
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return 0.0
     largest = max(contours, key=cv2.contourArea)
-    contour_area = cv2.contourArea(largest)
-    if contour_area < 10:
+    if cv2.contourArea(largest) < 10:
         return 0.0
-
     hull = cv2.convexHull(largest)
     hull_area = cv2.contourArea(hull)
     solidity = min(1.0, area / max(hull_area, 1))
-    score = solidity
-    if score < 0.2:
+    if solidity < 0.2:
         return 0.0
-    return min(1.0, score)
+    return min(1.0, solidity)
 
 
 def _segment_egg_multi_strategy(img):
@@ -286,10 +318,11 @@ def _segment_egg_multi_strategy(img):
     Returns (clean_mask, largest_contour, strategy_name, warning).
     """
     strategies = [
+        ('GrabCut中心', _segment_by_grabcut_center),
         ('灰度Otsu', _segment_by_grayscale_otsu),
         ('腐蚀法', _segment_by_binary_erosion),
         ('L*a*b*', _segment_by_lab),
-        ('Edge+GrabCut', _segment_by_edge_guided_grabcut),
+        ('EdgeGrabCut', _segment_by_edge_guided_grabcut),
         ('Canny', _segment_by_edge),
     ]
 
@@ -349,8 +382,7 @@ def process_uploaded_image(uploaded_file):
         quality = _evaluate_mask_quality(mask)
         if quality < 0.3:
             result['warning'] = (
-                f'分割质量较低（{quality:.2f}），可能影响特征准确性，'
-                f'建议使用蓝色背景或高对比度图片'
+                f'分割质量较低（{quality:.2f}）'
             )
         result['steps']['hsv_mask'] = mask
 
