@@ -314,18 +314,38 @@ def _evaluate_mask_quality(mask):
 
 
 def _segment_egg_multi_strategy(img):
-    """多策略鸡蛋分割 (带质量评估 + 降级链).
+    """通用分割（数据集照片专用）：GrabCut中心 → Otsu → 腐蚀 → Canny。
+    适用于居中、白底的数据集照片。
     Returns (clean_mask, largest_contour, strategy_name, warning).
     """
     strategies = [
         ('GrabCut中心', _segment_by_grabcut_center),
         ('灰度Otsu', _segment_by_grayscale_otsu),
         ('腐蚀法', _segment_by_binary_erosion),
-        ('L*a*b*', _segment_by_lab),
-        ('EdgeGrabCut', _segment_by_edge_guided_grabcut),
         ('Canny', _segment_by_edge),
     ]
+    for name, func in strategies:
+        try:
+            mask, contour, ok = func(img)
+            if ok:
+                quality = _evaluate_mask_quality(mask)
+                if quality > 0.1:
+                    return mask, contour, name, None
+        except Exception:
+            continue
+    return None, None, None, '所有分割策略均失败'
 
+
+def _segment_egg_photo(img):
+    """照片分割（用户上传专用）：L*a*b* → Otsu → Canny。
+    适用于用户手机拍摄的各种背景/光照照片。
+    Returns (clean_mask, largest_contour, strategy_name, warning).
+    """
+    strategies = [
+        ('L*a*b*', _segment_by_lab),
+        ('灰度Otsu', _segment_by_grayscale_otsu),
+        ('Canny', _segment_by_edge),
+    ]
     for name, func in strategies:
         try:
             mask, contour, ok = func(img)
@@ -373,7 +393,8 @@ def process_uploaded_image(uploaded_file):
         result['steps']['original'] = img_rgb
         result['steps']['grayscale'] = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
 
-        mask, contour, strategy, error = _segment_egg_multi_strategy(img)
+        # 上传照片 → 使用 L*a*b* 照片专用链
+        mask, contour, strategy, error = _segment_egg_photo(img)
         result['strategy'] = strategy
         if mask is None or contour is None:
             result['error'] = error or '未能在图像中检测到鸡蛋区域'
