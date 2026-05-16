@@ -292,8 +292,10 @@ def _quick_select_mode():
     col1, col2 = st.columns([1, 2])
 
     with col1:
+        # Only show eggs that have images
+        all_eggs = sorted([int(f.split('号')[0]) for f in os.listdir(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'egg_images')) if f.endswith('.jpg')])
         egg_id = st.selectbox(
-            '选择鸡蛋编号', list(range(1, 91)),
+            '选择鸡蛋编号', all_eggs,
             format_func=lambda x: f'{x}号鸡蛋',
             key='quick_egg_select'
         )
@@ -307,9 +309,9 @@ def _quick_select_mode():
         # Quick info
         fusion_df = load_fusion_data()
         if fusion_df is not None:
-            egg_row = fusion_df[fusion_df['egg_id'] == egg_id]
+            egg_row = fusion_df[fusion_df['EggID'] == egg_id]
             if not egg_row.empty:
-                risk_level = egg_row.iloc[0].get('RSI', 1)
+                risk_level = egg_row.iloc[0].get('RSI_GroupNum', 1)
                 risk_label, risk_color, risk_emoji = RSI_LABELS.get(risk_level, ('未知', '#888', '⚪'))
                 st.markdown(f"""
                 <div style="text-align:center;padding:10px;background:{risk_color}22;border-radius:8px;border:1px solid {risk_color};margin-top:8px;">
