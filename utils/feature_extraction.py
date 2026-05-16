@@ -26,8 +26,8 @@ def _is_u2net_ready():
         from rembg import new_session
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as ex:
-            fut = ex.submit(new_session, "u2net")
-            _u2net_session = fut.result(timeout=30)
+            fut = ex.submit(new_session, "u2netp")
+            _u2net_session = fut.result(timeout=15)
         _u2net_available = True
     except Exception:
         _u2net_available = False
