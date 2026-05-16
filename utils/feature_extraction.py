@@ -23,7 +23,7 @@ def _is_u2net_ready():
     if _u2net_available is not None:
         return _u2net_available
     model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                              '..', 'model', 'u2netp.onnx')
+                              '..', 'model', 'u2net.onnx')
     if not os.path.exists(model_path):
         _u2net_available = False
         return False
@@ -39,7 +39,7 @@ def _is_u2net_ready():
 def _segment_by_u2net(img_in):
     """Strategy J: U2Net 深度学习分割（OpenCV DNN 本地推理）。
     
-    使用预训练的 U²-Net 轻量模型（u2netp, 4.4MB）做像素级精确分割。
+    使用预训练的 U²-Net 模型（u2net, 168MB）做像素级精确分割。
     完全本地运行，无需联网下载，零额外依赖。
     对阴影、光照变化、复杂背景都鲁棒。
     """
