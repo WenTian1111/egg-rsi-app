@@ -12,14 +12,12 @@ A machine learning-based intelligent prediction system for egg roll stability (R
 
 ### Requirements
 - Python 3.9 or higher
-- No internet connection needed (fully offline)
+- Internet for first U2Net model download (subsequent runs are fully offline)
 
 ### Steps
 
 ```bash
-# 1. Extract the package
-tar -xzf egg-repo.tar.gz
-cd egg-repo
+# 1. Open terminal in the Egg_RSI_App folder
 
 # 2. Create a virtual environment (recommended)
 python -m venv venv
@@ -82,11 +80,11 @@ streamlit run app.py
 
 | Path | Description |
 |:-----|:------------|
-| `app.py` | Main application entry point |
-| `pages/showcase.py` | Showcase page (database, features, model comparison) |
-| `pages/prediction.py` | Prediction page (upload & quick select) |
+| `app.py` | Main application entry point + CSS theme |
+| `pages/showcase.py` | Showcase page (pipeline, features, model comparison, paper figures) |
+| `pages/prediction.py` | Prediction page (upload & quick select + thesis images) |
 | `utils/data_loader.py` | Data loading & column mapping |
-| `utils/feature_extraction.py` | OpenCV feature extraction (HSV pipeline) |
+| `utils/feature_extraction.py` | U2Net + 7-strategy multi-algorithm segmentation competition |
 | `model/svm_model.joblib` | Pretrained SVM model |
 | `model/rf_model.joblib` | Pretrained Random Forest model |
 | `model/gbdt_model.joblib` | Pretrained GBDT model |
@@ -94,14 +92,16 @@ streamlit run app.py
 | `model/scaler.joblib` | Feature scaler |
 | `data/fusion_dataset.csv` | 270-sample fused static-dynamic dataset |
 | `data/egg_images/` | Contour images of all 90 eggs |
+| `data/feature_importance_RF_GBDT.csv` | RF + GBDT feature importance table |
+| `assets/` | Thesis figures (experiment platform, RSI 3D cluster, trajectory tracking, etc.) |
 | `requirements.txt` | Python dependencies |
 
 ## Tech Stack
 
 - **Frontend**: Streamlit + Plotly
-- **Vision**: OpenCV (HSV segmentation + feature extraction)
+- **Vision**: U2Net (deep learning) + OpenCV (7-strategy multi-algorithm competition)
 - **Models**: scikit-learn (SVM / RF / GBDT / LR)
-- **UI**: Dark tech-blue themed CSS animations
+- **UI**: Sci-fi dark tech theme — hexagonal grid, Tron corners, circuit traces, data stream animations
 
 ## Project Info
 
