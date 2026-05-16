@@ -13,14 +13,28 @@ import cv2
 import numpy as np
 import os
 
-# U2Net 深度学习分割（懒加载）
+# U2Net 深度学习分割（懒加载 + 超时保护）
 _u2net_session = None
+_u2net_available = None  # None=未检测, True/False
+
+def _is_u2net_ready():
+    """检测 U2Net 是否可用（带30秒超时），避免 Streamlit Cloud 上模型下载卡死。"""
+    global _u2net_available, _u2net_session
+    if _u2net_available is not None:
+        return _u2net_available
+    try:
+        from rembg import new_session
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as ex:
+            fut = ex.submit(new_session, "u2net")
+            _u2net_session = fut.result(timeout=30)
+        _u2net_available = True
+    except Exception:
+        _u2net_available = False
+    return _u2net_available
 
 def _get_u2net_session():
-    global _u2net_session
-    if _u2net_session is None:
-        from rembg import new_session
-        _u2net_session = new_session("u2net")
+    """返回已初始化的 U2Net session，前提是 _is_u2net_ready() 已返回 True。"""
     return _u2net_session
 
 
@@ -461,8 +475,12 @@ def _segment_by_u2net(img_in):
     """Strategy J: U2Net 深度学习分割。
     使用预训练的 U²-Net 模型做像素级精确分割。
     对阴影、光照变化、复杂背景都鲁棒。
-    首次调用会加载模型（~2s），后续快速。
+    首次调用会加载模型（~2s本地，云端可能30s+），后续快速。
+    如果模型加载失败或超时，自动跳过不阻塞。
     """
+    if not _is_u2net_ready():
+        return None, None, False
+
     from PIL import Image as PILImage
     from rembg import remove as _remove
 
