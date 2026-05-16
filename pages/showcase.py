@@ -81,6 +81,20 @@ def _show_pipeline_tab(df):
 
     st.markdown("### 📊 特征提取结果")
 
+    # 实验平台图（论文附件）— 可展开查看
+    with st.expander("🔬 点击查看实验平台与论文配套图表", expanded=False):
+        import os
+        assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets')
+        plat_img = os.path.join(assets_dir, 'experiment_platform.png')
+        if os.path.exists(plat_img):
+            st.markdown('<div class="paper-image">', unsafe_allow_html=True)
+            st.image(plat_img, use_container_width=True)
+            st.markdown('<div class="img-caption">图2.1 实验平台 — 静态图像采集区 + 动态滚落区</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        risk_img = os.path.join(assets_dir, 'risk_validation.jpg')
+        if os.path.exists(risk_img):
+            st.image(risk_img, use_container_width=True)
+
     egg_ids = sorted(df["EggID"].unique())
     selected_egg = st.selectbox(
         "选择鸡蛋",
@@ -211,28 +225,36 @@ def _show_browser_tab(df):
         st.markdown("### 🔍 筛选条件")
         st.markdown("**按风险等级筛选:**")
         
-        risk_colors = {
-            "低风险": {"color": "#4ECDC4", "emoji": "🟢"},
-            "中风险": {"color": "#FFE66D", "emoji": "🟡"},
-            "高风险": {"color": "#FF6B6B", "emoji": "🔴"},
-        }
+        # Initialize toggle states (using non-widget keys)
+        if 'risk_toggle_0' not in st.session_state:
+            st.session_state['risk_toggle_0'] = True
+        if 'risk_toggle_1' not in st.session_state:
+            st.session_state['risk_toggle_1'] = True
+        if 'risk_toggle_2' not in st.session_state:
+            st.session_state['risk_toggle_2'] = True
+        
+        risk_configs = [
+            ('低风险', '#4ECDC4', '🟢', 'risk_toggle_0', 1),
+            ('中风险', '#FFE66D', '🟡', 'risk_toggle_1', 2),
+            ('高风险', '#FF6B6B', '🔴', 'risk_toggle_2', 3),
+        ]
         selected_risks = []
         cols = st.columns(3)
-        for idx, (name, info) in enumerate(risk_colors.items()):
-            with cols[idx]:
-                btn_key = f"risk_{idx}"
-                if btn_key not in st.session_state:
-                    st.session_state[btn_key] = True
+        for idx, btn in enumerate(cols):
+            name, color, emoji, state_key, level = risk_configs[idx]
+            with btn:
+                is_active = st.session_state[state_key]
+                label = f"{emoji} {name}"
                 if st.button(
-                    f"{info['emoji']} {name}",
-                    key=btn_key,
+                    label,
+                    key=f"risk_btn_{idx}",
                     use_container_width=True,
-                    type="secondary" if not st.session_state[btn_key] else "primary"
+                    type="primary" if is_active else "secondary"
                 ):
-                    st.session_state[btn_key] = not st.session_state[btn_key]
+                    st.session_state[state_key] = not st.session_state[state_key]
                     st.rerun()
-                if st.session_state[btn_key]:
-                    selected_risks.append(idx + 1)
+                if st.session_state[state_key]:
+                    selected_risks.append(level)
         
         if not selected_risks:
             st.caption("⚠️ 至少选一个等级")
@@ -408,34 +430,51 @@ def _show_browser_tab(df):
 
                 with col2:
                     try:
-                        rf_imp, gbdt_imp = load_feature_importance()
-                        imp = rf_imp if rf_imp is not None else gbdt_imp
-                        if imp is not None and len(imp) > 0:
-                            imp_top = imp.head(10)
-                            x_col = [c for c in imp_top.columns if c != imp_top.columns[0]][0]
-                            y_col = imp_top.columns[0]
-                            fig_imp = go.Figure(go.Bar(
-                                x=pd.to_numeric(imp_top[x_col], errors='coerce').fillna(0),
-                                y=imp_top[y_col],
+                        imp_df = load_feature_importance()
+                        if isinstance(imp_df, tuple):
+                            imp_df = imp_df[0] if imp_df[0] is not None else imp_df[1]
+                        if imp_df is not None and len(imp_df) > 0:
+                            # 使用 ShortName 作为标签，取 Top 10
+                            imp_top = imp_df.head(10).copy()
+                            y_labels = imp_top['ShortName'].tolist()
+
+                            fig_imp = go.Figure()
+                            # RF 重要性（青色）
+                            fig_imp.add_trace(go.Bar(
+                                x=pd.to_numeric(imp_top['RF_Importance'], errors='coerce').fillna(0),
+                                y=y_labels,
+                                name='随机森林 (RF)',
                                 orientation='h',
                                 marker_color='#00B4D8',
-                                text=imp_top[y_col],
+                                text=imp_top['RF_Importance'].round(3),
+                                textposition='outside',
+                            ))
+                            # GBDT 重要性（暖金色）
+                            fig_imp.add_trace(go.Bar(
+                                x=pd.to_numeric(imp_top['GBDT_Importance'], errors='coerce').fillna(0),
+                                y=y_labels,
+                                name='梯度提升树 (GBDT)',
+                                orientation='h',
+                                marker_color='#FFB347',
+                                text=imp_top['GBDT_Importance'].round(3),
                                 textposition='outside',
                             ))
                             fig_imp.update_layout(
-                                title=dict(text='随机森林特征重要性 (Top 10)', font=dict(color='#ADB5BD', size=14)),
+                                title=dict(text='特征重要性对比 (Top 10)', font=dict(color='#ADB5BD', size=14)),
                                 xaxis=dict(title='重要性', tickfont=dict(color='#ADB5BD'), gridcolor='#2D2D3D'),
                                 yaxis=dict(tickfont=dict(color='#ADB5BD'), gridcolor='#2D2D3D'),
                                 paper_bgcolor='rgba(0,0,0,0)',
                                 plot_bgcolor='rgba(0,0,0,0)',
-                                height=400,
-                                margin=dict(l=150, r=40, t=40, b=30),
+                                legend=dict(font=dict(color='white'), orientation='h', y=1.1),
+                                height=420,
+                                margin=dict(l=130, r=40, t=50, b=30),
+                                barmode='group',
                             )
                             st.plotly_chart(fig_imp, use_container_width=True)
                         else:
                             st.info("特征重要性数据暂不可用")
-                    except Exception:
-                        st.info("特征重要性图表暂不可用")
+                    except Exception as e:
+                        st.info(f"特征重要性数据暂不可用")
             else:
                 st.info("模型对比数据未找到，请确保数据文件存在且包含 ModelName 列。")
                 if metrics_df is not None:

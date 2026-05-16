@@ -13,6 +13,16 @@ import cv2
 import numpy as np
 import os
 
+# U2Net 深度学习分割（懒加载）
+_u2net_session = None
+
+def _get_u2net_session():
+    global _u2net_session
+    if _u2net_session is None:
+        from rembg import new_session
+        _u2net_session = new_session("u2net")
+    return _u2net_session
+
 
 # ═══════════════════════════════════════════════
 # PRIMARY: GrabCut 固定中心矩形
@@ -313,12 +323,205 @@ def _evaluate_mask_quality(mask):
     return min(1.0, solidity)
 
 
+def _segment_by_kmeans_photo(img_in):
+    """Strategy H: 自适应 K-means 聚类分割（照片专用）。
+    
+    核心思想：先用 k=3 聚类 + 智能合并，处理光照不均匀导致一侧缺失的问题。
+    如果 k=3 质量不佳（对简单背景可能过分割），自动回退到 k=2。
+    
+    流程：
+    1. 双边滤波（去噪保边）
+    2. k=3 聚类 → 按中心覆盖率排序 → 合并覆盖率>20%的集群
+    3. 评估质量，如果好 → 返回
+    4. 回退到 k=2 聚类 → 返回
+    """
+    h, w = img_in.shape[:2]
+    scale = 1.0
+    if max(h, w) > 800:
+        scale = 800.0 / max(h, w)
+        small = cv2.resize(img_in, None, fx=scale, fy=scale,
+                           interpolation=cv2.INTER_AREA)
+    else:
+        small = img_in
+    sh, sw = small.shape[:2]
+
+    # 双边滤波
+    bilateral = cv2.bilateralFilter(small, 7, 50, 50)
+    lab = cv2.cvtColor(bilateral, cv2.COLOR_BGR2LAB)
+    pixels = lab.reshape(-1, 3).astype(np.float32)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0)
+
+    cx, cy = sw // 2, sh // 2
+    margin = min(sw, sh) // 4
+    x1, y1 = max(0, cx - margin), max(0, cy - margin)
+    x2, y2 = min(sw, cx + margin), min(sh, cy + margin)
+
+    def _kmeans_and_mask(n_clusters, merge_thresh=0.20):
+        """内部函数：做 K-means 聚类并生成掩膜"""
+        _, labels, _ = cv2.kmeans(pixels, n_clusters, None, criteria, 10,
+                                  cv2.KMEANS_PP_CENTERS)
+        label_img = labels.reshape(sh, sw)
+
+        # 计算每个 cluster 的中心覆盖率
+        center_region = label_img[y1:y2, x1:x2].flatten()
+        counts = np.bincount(center_region, minlength=n_clusters)
+        ratios = counts / max(counts.sum(), 1)
+
+        # 按覆盖率排序
+        ranked = sorted([(ratios[i], i) for i in range(n_clusters)], reverse=True)
+
+        # 智能合并：主集群 + 覆盖率>阈值的所有集群
+        egg_clusters = [ranked[0][1]]
+        for i in range(1, n_clusters):
+            if ranked[i][0] > merge_thresh:
+                egg_clusters.append(ranked[i][1])
+
+        mask = np.zeros((sh, sw), dtype=np.uint8)
+        for cl in egg_clusters:
+            mask[label_img == cl] = 255
+
+        # 极小核形态学
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE,
+                                np.ones((5, 5), np.uint8), iterations=1)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,
+                                np.ones((3, 3), np.uint8), iterations=1)
+        return mask
+
+    # 先试 k=3 + 合并
+    mask = _kmeans_and_mask(3, merge_thresh=0.20)
+
+    # 评估质量
+    small_quality = _evaluate_mask_quality(mask)
+    if small_quality < 0.95:  # k=3 质量不好 → 回退到 k=2
+        mask = _kmeans_and_mask(2, merge_thresh=1.0)  # merge_thresh=1.0 只选第一个
+
+    if scale < 1.0:
+        mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_NEAREST)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None, None, False
+    largest = max(contours, key=cv2.contourArea)
+    clean = np.zeros_like(mask, dtype=np.uint8)
+    cv2.drawContours(clean, [largest], -1, 255, -1)
+    clean = _fill_holes(clean)
+    cnt_out, _ = cv2.findContours(clean, cv2.RETR_EXTERNAL,
+                                  cv2.CHAIN_APPROX_SIMPLE)
+    if not cnt_out:
+        return None, None, False
+    return clean, max(cnt_out, key=cv2.contourArea), True
+
+
+def _segment_by_edge_floodfill(img_in):
+    """Strategy I: 边缘检测 + 膨胀闭合 + 洪水填充。
+    基于硬边缘（Canny），不受阴影影响。
+    适用于鸡蛋和背景颜色相似但边缘清晰的场景。
+    """
+    h, w = img_in.shape[:2]
+    gray = cv2.cvtColor(img_in, cv2.COLOR_BGR2GRAY)
+
+    # CLAHE 增强对比度
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    blurred = cv2.GaussianBlur(enhanced, (5, 5), 0)
+
+    # Canny 边缘检测（低阈值让边缘更完整）
+    edges = cv2.Canny(blurred, 20, 80)
+
+    # 多轮膨胀闭合断开的边缘
+    closed = edges.copy()
+    for _ in range(3):
+        closed = cv2.dilate(closed, np.ones((5, 5), np.uint8))
+    closed = cv2.erode(closed, np.ones((3, 3), np.uint8), iterations=3)
+
+    # 从中心洪水填充
+    flooded = closed.copy()
+    mask_fill = np.zeros((h + 2, w + 2), np.uint8)
+    cv2.floodFill(flooded, mask_fill, (w // 2, h // 2), 255)
+
+    # 保留最大连通域
+    contours, _ = cv2.findContours(flooded, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None, None, False
+    largest = max(contours, key=cv2.contourArea)
+    mask = np.zeros_like(flooded)
+    cv2.drawContours(mask, [largest], -1, 255, -1)
+    mask = _fill_holes(mask)
+
+    cnt_out, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
+                                  cv2.CHAIN_APPROX_SIMPLE)
+    if not cnt_out:
+        return None, None, False
+    return mask, max(cnt_out, key=cv2.contourArea), True
+
+
+def _segment_by_u2net(img_in):
+    """Strategy J: U2Net 深度学习分割。
+    使用预训练的 U²-Net 模型做像素级精确分割。
+    对阴影、光照变化、复杂背景都鲁棒。
+    首次调用会加载模型（~2s），后续快速。
+    """
+    from PIL import Image as PILImage
+    from rembg import remove as _remove
+
+    h, w = img_in.shape[:2]
+    pil_img = PILImage.fromarray(cv2.cvtColor(img_in, cv2.COLOR_BGR2RGB))
+    output = _remove(pil_img, session=_get_u2net_session())
+
+    mask = np.array(output)[:, :, 3]
+    _, mask_bin = cv2.threshold(mask, 128, 255, cv2.THRESH_BINARY)
+    mask_bin = cv2.morphologyEx(mask_bin, cv2.MORPH_CLOSE,
+                                np.ones((5, 5), np.uint8))
+
+    contours, _ = cv2.findContours(mask_bin, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None, None, False
+    largest = max(contours, key=cv2.contourArea)
+    clean = np.zeros_like(mask_bin)
+    cv2.drawContours(clean, [largest], -1, 255, -1)
+    clean = _fill_holes(clean)
+    cnt_out, _ = cv2.findContours(clean, cv2.RETR_EXTERNAL,
+                                  cv2.CHAIN_APPROX_SIMPLE)
+    if not cnt_out:
+        return None, None, False
+    return clean, max(cnt_out, key=cv2.contourArea), True
+
+
+def _segment_by_contour_floodfill(img):
+    """Strategy G: 阈值提取轮廓 → 膨胀闭合 → 洪水填充。
+    专为白线黑底的鸡蛋轮廓图设计。先提取明亮轮廓线，
+    通过膨胀连接断点，再从中心洪水填充得到完整蛋形。
+    """
+    h, w = img.shape[:2]
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+    dilated = cv2.dilate(thresh, np.ones((11, 11), np.uint8), iterations=5)
+    flooded = dilated.copy()
+    mask_fill = np.zeros((h + 2, w + 2), np.uint8)
+    cv2.floodFill(flooded, mask_fill, (w // 2, h // 2), 255)
+    clean = cv2.morphologyEx(flooded, cv2.MORPH_OPEN,
+                             np.ones((15, 15), np.uint8))
+    clean = _fill_holes(clean)
+    contours, _ = cv2.findContours(clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None, None, False
+    largest = max(contours, key=cv2.contourArea)
+    result = np.zeros_like(clean)
+    cv2.drawContours(result, [largest], -1, 255, -1)
+    return result, largest, True
+
+
 def _segment_egg_multi_strategy(img):
-    """通用分割（数据集图片专用）：Otsu → GrabCut中心 → 腐蚀 → Canny。
-    先试 Otsu（对干净的轮廓图效果最好），不行再走 GrabCut。
+    """通用分割（数据集图片专用）：轮廓填充 → Otsu → GrabCut → 腐蚀 → Canny。
+    优先使用 flood-fill 专门处理白线黑底的轮廓图。
+    对左下角线条较细的情况比 Otsu 更鲁棒。
     Returns (clean_mask, largest_contour, strategy_name, warning).
     """
     strategies = [
+        ('轮廓填充', _segment_by_contour_floodfill),
         ('灰度Otsu', _segment_by_grayscale_otsu),
         ('GrabCut中心', _segment_by_grabcut_center),
         ('腐蚀法', _segment_by_binary_erosion),
@@ -329,9 +532,9 @@ def _segment_egg_multi_strategy(img):
             mask, contour, ok = func(img)
             if ok:
                 quality = _evaluate_mask_quality(mask)
-                # Otsu 对干净轮廓图效果极好，质量分高 → 直接用
+                # 轮廓填充质量极高且稳定 → 直接信任
                 # GrabCut 需要更高阈值（0.3+）避免截断
-                min_quality = 0.1 if name == '灰度Otsu' else 0.3
+                min_quality = 0.1 if name == '轮廓填充' else (0.1 if name == '灰度Otsu' else 0.3)
                 if quality > min_quality:
                     return mask, contour, name, None
         except Exception:
@@ -340,25 +543,48 @@ def _segment_egg_multi_strategy(img):
 
 
 def _segment_egg_photo(img):
-    """照片分割（用户上传专用）：L*a*b* → Otsu → Canny。
-    适用于用户手机拍摄的各种背景/光照照片。
+    """照片分割（用户上传专用）：多算法竞争——边缘法 → K-means → GrabCut，取最优。
+    
+    不依赖单一算法，而是并行尝试多种不同原理的分割方法：
+    - 边缘检测法：基于硬边缘，不受阴影影响（阴影是软边缘）
+    - K-means聚类：基于颜色
+    - GrabCut：基于颜色分布模型
+    - Canny后补：最后手段
+    
+    每种方法独立评估质量，返回最优结果。
     Returns (clean_mask, largest_contour, strategy_name, warning).
     """
-    strategies = [
-        ('L*a*b*', _segment_by_lab),
-        ('灰度Otsu', _segment_by_grayscale_otsu),
-        ('Canny', _segment_by_edge),
+    results = []
+    
+    # 策略列表：(名称, 函数, 最低质量要求)
+    candidates = [
+        ('U2Net AI', _segment_by_u2net, 0.1),
+        ('边缘填充', _segment_by_edge_floodfill, 0.1),
+        ('K-means', _segment_by_kmeans_photo, 0.1),
+        ('L*a*b*', _segment_by_lab, 0.1),
+        ('边缘GrabCut', _segment_by_edge_guided_grabcut, 0.3),
+        ('GrabCut中心', _segment_by_grabcut_center, 0.3),
+        ('灰度Otsu', _segment_by_grayscale_otsu, 0.1),
+        ('Canny', _segment_by_edge, 0.1),
     ]
-    for name, func in strategies:
+    
+    for name, func, min_qual in candidates:
         try:
             mask, contour, ok = func(img)
             if ok:
                 quality = _evaluate_mask_quality(mask)
-                if quality > 0.1:
-                    return mask, contour, name, None
+                if quality > min_qual:
+                    results.append((quality, name, mask, contour))
         except Exception:
             continue
-    return None, None, None, '所有分割策略均失败'
+    
+    if not results:
+        return None, None, None, '所有分割策略均失败'
+    
+    # 按质量降序排列，取最优
+    results.sort(key=lambda x: x[0], reverse=True)
+    best = results[0]
+    return best[2], best[3], best[1], None
 
 
 # ═══════════════════════════════════════════════
@@ -410,8 +636,20 @@ def process_uploaded_image(uploaded_file):
             )
         result['steps']['hsv_mask'] = mask
 
+        # 轮廓平滑（仅用于可视化，不改变特征计算的 contour）
+        epsilon = 0.005 * cv2.arcLength(contour, closed=True)
+        smooth_contour = cv2.approxPolyDP(contour, epsilon, closed=True)
+
         contour_viz = img_rgb.copy()
-        cv2.drawContours(contour_viz, [contour], -1, (255, 0, 0), 3)
+        # 先叠加 Canny 边缘（灰色细线，显示算法检测到的真实边缘）
+        gray_viz = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+        edges_viz = cv2.Canny(cv2.GaussianBlur(gray_viz, (5, 5), 0), 30, 100)
+        overlay = contour_viz.copy()
+        overlay[edges_viz > 0] = [100, 255, 100]  # 绿色边缘
+        contour_viz = cv2.addWeighted(overlay, 0.3, contour_viz, 0.7, 0)
+
+        # 绘制平滑后的轮廓
+        cv2.drawContours(contour_viz, [smooth_contour], -1, (255, 0, 0), 3)
         M = cv2.moments(mask)
         if M['m00'] > 0:
             cx = int(M['m10'] / M['m00'])

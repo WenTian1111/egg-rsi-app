@@ -364,3 +364,22 @@ def _quick_select_mode():
         st.markdown('---')
         st.markdown('### 📋 预测结果')
         display_prediction_result(pred, probs)
+
+# ═══ 论文图表展示（折叠，不干扰预测流程）═══
+with st.expander("📊 查看论文配套图表（RSI聚类与滚落轨迹）", expanded=False):
+    import os
+    assets_dir = os.path.join(os.path.dirname(__file__), '..', 'assets')
+    col_a, col_b = st.columns(2)
+    with col_a:
+        rsi_img = os.path.join(assets_dir, 'rsi_3d_cluster.jpg')
+        if os.path.exists(rsi_img):
+            st.markdown('<div class="paper-image">', unsafe_allow_html=True)
+            st.image(rsi_img, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+    with col_b:
+        traj_img = os.path.join(assets_dir, 'trajectory_tracking.jpg')
+        if os.path.exists(traj_img):
+            st.markdown('<div class="paper-image">', unsafe_allow_html=True)
+            st.image(traj_img, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+    st.caption("左：动态易损性指数(RSI)三维空间聚类映射 | 右：动态轨迹追踪效果图")

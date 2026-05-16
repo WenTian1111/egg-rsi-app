@@ -15,23 +15,45 @@ st.markdown("""
         font-family: 'Segoe UI', system-ui, sans-serif;
     }
 
-    /* ─── Grid overlay background (subtle, non-blocking) ─── */
+    /* ─── Hexagonal grid overlay (sci-fi tech, non-blocking) ─── */
     .stApp::before {
         content: '';
         position: fixed;
         top: 0; left: 0;
         width: 100vw; height: 100vh;
         background-image:
-            linear-gradient(rgba(0, 180, 216, 0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0, 180, 216, 0.03) 1px, transparent 1px);
-        background-size: 40px 40px;
+            /* Horizontal lines */
+            linear-gradient(60deg, rgba(0, 180, 216, 0.025) 0%, transparent 0.5px),
+            linear-gradient(-60deg, rgba(0, 180, 216, 0.025) 0%, transparent 0.5px),
+            linear-gradient(0deg, rgba(0, 180, 216, 0.015) 0%, transparent 0.5px);
+        background-size: 50px 86.6px;
+        background-position: 25px 43.3px;
         pointer-events: none;
         z-index: 0;
-        animation: gridMove 20s linear infinite;
+        animation: hexPulse 8s ease-in-out infinite;
     }
-    @keyframes gridMove {
-        0% { transform: translate(0, 0); }
-        100% { transform: translate(40px, 40px); }
+    @keyframes hexPulse {
+        0% { opacity: 0.5; }
+        50% { opacity: 1; }
+        100% { opacity: 0.5; }
+    }
+
+    /* ─── Circuit board traces (subtle decorative) ─── */
+    .circuit-bg {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100vw; height: 100vh;
+        pointer-events: none;
+        z-index: 0;
+        opacity: 0.035;
+        background-image:
+            /* Dot matrix nodes */
+            radial-gradient(circle, #00B4D8 1px, transparent 1px),
+            /* Horizontal traces */
+            repeating-linear-gradient(90deg, transparent, transparent 80px, rgba(0, 180, 216, 0.3) 80px, rgba(0, 180, 216, 0.3) 81px),
+            /* Vertical traces */
+            repeating-linear-gradient(0deg, transparent, transparent 80px, rgba(0, 180, 216, 0.3) 80px, rgba(0, 180, 216, 0.3) 81px);
+        background-size: 80px 80px, 160px 160px, 160px 160px;
     }
 
     /* ─── Floating glow orbs ─── */
@@ -137,7 +159,7 @@ st.markdown("""
         background: linear-gradient(90deg, rgba(0, 180, 216, 0.08), transparent);
     }
 
-    /* ═══════ CARDS = hover glow + entrance animation ═══════ */
+    /* ═══════ CARDS = hover glow + entrance animation + Tron corners ═══════ */
     .card {
         background: #12141E;
         border: 1px solid #2A2D3E;
@@ -149,6 +171,29 @@ st.markdown("""
         z-index: 1;
         overflow: hidden;
         animation: cardFadeIn 0.6s ease-out both;
+    }
+    /* Tron corner brackets */
+    .card::before {
+        content: '';
+        position: absolute;
+        top: -1px; left: -1px;
+        width: 24px; height: 24px;
+        border-top: 2px solid rgba(0, 180, 216, 0.3);
+        border-left: 2px solid rgba(0, 180, 216, 0.3);
+        border-radius: 12px 0 0 0;
+        transition: all 0.4s ease;
+        pointer-events: none;
+    }
+    .card::after {
+        content: '';
+        position: absolute;
+        bottom: -1px; right: -1px;
+        width: 24px; height: 24px;
+        border-bottom: 2px solid rgba(0, 180, 216, 0.3);
+        border-right: 2px solid rgba(0, 180, 216, 0.3);
+        border-radius: 0 0 12px 0;
+        transition: all 0.4s ease;
+        pointer-events: none;
     }
     .card:nth-child(1) { animation-delay: 0.05s; }
     .card:nth-child(2) { animation-delay: 0.1s; }
@@ -167,6 +212,14 @@ st.markdown("""
             0 0 30px rgba(0, 180, 216, 0.06),
             inset 0 0 15px rgba(0, 180, 216, 0.03);
         transform: translateY(-2px);
+    }
+    .card:hover::before {
+        width: 36px; height: 36px;
+        border-color: #00B4D8;
+    }
+    .card:hover::after {
+        width: 36px; height: 36px;
+        border-color: #00B4D8;
     }
 
     /* ─── Metric cards with top glow bar ─── */
@@ -437,9 +490,72 @@ st.markdown("""
     .stSpinner {
         color: #00B4D8 !important;
     }
+
+    /* ═══════ DECORATIVE IMAGE CONTAINERS ═══════ */
+    .paper-image {
+        border: 1px solid #2A2D3E;
+        border-radius: 10px;
+        overflow: hidden;
+        transition: all 0.4s ease;
+        position: relative;
+    }
+    .paper-image:hover {
+        border-color: #00B4D8;
+        box-shadow: 0 0 20px rgba(0, 180, 216, 0.15);
+        transform: scale(1.01);
+    }
+    .paper-image img {
+        width: 100%;
+        height: auto;
+        display: block;
+    }
+    .paper-image .img-caption {
+        padding: 0.6rem 1rem;
+        background: linear-gradient(180deg, transparent, rgba(10, 13, 20, 0.9));
+        color: #8A8FA6;
+        font-size: 0.8rem;
+        position: absolute;
+        bottom: 0; left: 0; right: 0;
+    }
+
+    /* ═══════ SIDEBAR IMAGE ═══════ */
+    .sidebar-image {
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid #1A1D2E;
+        margin: 1rem 0;
+        transition: all 0.3s ease;
+    }
+    .sidebar-image:hover {
+        border-color: #00B4D8;
+        box-shadow: 0 0 10px rgba(0, 180, 216, 0.1);
+    }
+
+    /* ═══════ DATA STREAM DECORATION ═══════ */
+    @keyframes dataStream {
+        0% { transform: translateX(-100%); opacity: 0; }
+        10% { opacity: 1; }
+        90% { opacity: 1; }
+        100% { transform: translateX(calc(100vw + 100px)); opacity: 0; }
+    }
+    .data-stream {
+        position: fixed;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(0, 180, 216, 0.4), transparent);
+        z-index: 9998;
+        pointer-events: none;
+        animation: dataStream 6s ease-in-out infinite;
+    }
+    .data-stream:nth-child(1) { top: 30%; animation-delay: 0s; width: 200px; }
+    .data-stream:nth-child(2) { top: 55%; animation-delay: 2s; width: 150px; }
+    .data-stream:nth-child(3) { top: 75%; animation-delay: 4s; width: 180px; }
 </style>
 """, unsafe_allow_html=True)
 
+# Circuit board background
+st.markdown('<div class="circuit-bg"></div>', unsafe_allow_html=True)
+# Data stream particles
+st.markdown('<div class="data-stream"></div><div class="data-stream"></div><div class="data-stream"></div>', unsafe_allow_html=True)
 # Floating scan line HTML element (pure visual decoration)
 st.markdown('<div class="scan-line"></div>', unsafe_allow_html=True)
 
@@ -447,6 +563,13 @@ with st.sidebar:
     st.markdown("### 🥚 系统导航")
     st.markdown('<div class="accent-bar"></div>', unsafe_allow_html=True)
     st.markdown('<div class="sidebar-section">请在右侧页面中进行操作</div>', unsafe_allow_html=True)
+
+    # Sidebar decorative image — 鸡蛋物理机制
+    import os
+    physics_img = os.path.join(os.path.dirname(__file__), 'assets', 'egg_physics.png')
+    if os.path.exists(physics_img):
+        st.image(physics_img, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('<div class="main-header">🥚 鸡蛋滚落稳定性分析系统</div>', unsafe_allow_html=True)
 
