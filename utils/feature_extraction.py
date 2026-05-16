@@ -13,110 +13,79 @@ import cv2
 import numpy as np
 import os
 
-# U2Net 深度学习分割（懒加载 + 超时保护）
-_u2net_session = None
+# U2Net 深度学习分割（OpenCV DNN 本地推理，零额外依赖）
+_u2net_net = None
 _u2net_available = None  # None=未检测, True/False
 
 def _is_u2net_ready():
-    """检测 U2Net 是否可用（带30秒超时），避免 Streamlit Cloud 上模型下载卡死。"""
-    global _u2net_available, _u2net_session
+    """检测 U2Net ONNX 模型是否可用（纯本地，无需联网/下载）。"""
+    global _u2net_available, _u2net_net
     if _u2net_available is not None:
         return _u2net_available
+    model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              '..', 'model', 'u2netp.onnx')
+    if not os.path.exists(model_path):
+        _u2net_available = False
+        return False
     try:
-        from rembg import new_session
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as ex:
-            fut = ex.submit(new_session, "u2netp")
-            _u2net_session = fut.result(timeout=15)
+        _u2net_net = cv2.dnn.readNetFromONNX(model_path)
+        _u2net_net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
         _u2net_available = True
     except Exception:
         _u2net_available = False
     return _u2net_available
 
-def _get_u2net_session():
-    """返回已初始化的 U2Net session，前提是 _is_u2net_ready() 已返回 True。"""
-    return _u2net_session
 
-
-# ═══════════════════════════════════════════════
-# PRIMARY: GrabCut 固定中心矩形
-# ═══════════════════════════════════════════════
-
-def _segment_by_grabcut_center(img):
-    """Strategy A (PRIMARY): 固定中心矩形 GrabCut.
-    先降采样到 max(w,h) <= 768 加速, 再恢复.
+def _segment_by_u2net(img_in):
+    """Strategy J: U2Net 深度学习分割（OpenCV DNN 本地推理）。
+    
+    使用预训练的 U²-Net 轻量模型（u2netp, 4.4MB）做像素级精确分割。
+    完全本地运行，无需联网下载，零额外依赖。
+    对阴影、光照变化、复杂背景都鲁棒。
     """
-    h, w = img.shape[:2]
-    scale = 768.0 / max(h, w) if max(h, w) > 768 else 1.0
-    if scale < 1.0:
-        small = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
-        sh, sw = small.shape[:2]
+    if not _is_u2net_ready():
+        return None, None, False
+
+    h, w = img_in.shape[:2]
+
+    # 预处理：缩放到 320x320 + 归一化
+    blob = cv2.dnn.blobFromImage(img_in, 1/255.0, (320, 320),
+                                 (0.485, 0.456, 0.406), swapRB=False,
+                                 crop=False)
+    # 用训练集的 std 做归一化
+    blob[:, 0, :, :] = (blob[:, 0, :, :] - 0.485) / 0.229
+    blob[:, 1, :, :] = (blob[:, 1, :, :] - 0.456) / 0.224
+    blob[:, 2, :, :] = (blob[:, 2, :, :] - 0.406) / 0.225
+
+    # 推理
+    _u2net_net.setInput(blob)
+    output = _u2net_net.forward()
+    # 如果输出是 4D (N,C,H,W)，降维到 2D
+    if output.ndim == 4:
+        prob = output[0, 0, :, :]
     else:
-        small = img
-        sh, sw = h, w
+        prob = output[0]
 
-    margin_x = max(20, int(sw * 0.10))
-    margin_y = max(20, int(sh * 0.10))
-    rect = (margin_x, margin_y, sw - 2*margin_x, sh - 2*margin_y)
-    if rect[2] < 40 or rect[3] < 40:
+    # 后处理
+    prob = cv2.resize(prob, (w, h), interpolation=cv2.INTER_LINEAR)
+    _, mask_bin = cv2.threshold(prob, 0.5, 255, cv2.THRESH_BINARY)
+    mask_bin = mask_bin.astype(np.uint8)
+    mask_bin = cv2.morphologyEx(mask_bin, cv2.MORPH_CLOSE,
+                                np.ones((5, 5), np.uint8))
+
+    contours, _ = cv2.findContours(mask_bin, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
         return None, None, False
-
-    try:
-        mask_gc = np.zeros((sh, sw), np.uint8)
-        bgd = np.zeros((1, 65), np.float64)
-        fgd = np.zeros((1, 65), np.float64)
-        cv2.grabCut(small, mask_gc, rect, bgd, fgd, 5, cv2.GC_INIT_WITH_RECT)
-    except cv2.error:
+    largest = max(contours, key=cv2.contourArea)
+    clean = np.zeros_like(mask_bin)
+    cv2.drawContours(clean, [largest], -1, 255, -1)
+    clean = _fill_holes(clean)
+    cnt_out, _ = cv2.findContours(clean, cv2.RETR_EXTERNAL,
+                                  cv2.CHAIN_APPROX_SIMPLE)
+    if not cnt_out:
         return None, None, False
-
-    bin_mask = np.where((mask_gc == 2) | (mask_gc == 0), 0, 1).astype(np.uint8) * 255
-    if scale < 1.0:
-        bin_mask = cv2.resize(bin_mask, (w, h), interpolation=cv2.INTER_NEAREST)
-
-    bin_mask = cv2.morphologyEx(bin_mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
-    bin_mask = cv2.morphologyEx(bin_mask, cv2.MORPH_CLOSE,
-                                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
-    bin_mask = _fill_holes(bin_mask)
-    binary, largest = _keep_largest_contour(bin_mask)
-    if binary is None:
-        return None, None, False
-    return binary, largest, True
-
-
-# ═══════════════════════════════════════════════
-# FALLBACK 1: 灰度 Otsu + 连通筛选
-# ═══════════════════════════════════════════════
-
-def _segment_by_grayscale_otsu(img):
-    """Strategy B: 灰度 Otsu 阈值分割.
-    自动检测鸡蛋是亮是暗，同时试 BINARY 和 BINARY_INV.
-    """
-    h, w = img.shape[:2]
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    enhanced = clahe.apply(gray)
-    blurred = cv2.GaussianBlur(enhanced, (7, 7), 0)
-
-    best_mask, best_contour = None, None
-    for use_inv in [True, False]:
-        flag = cv2.THRESH_BINARY_INV if use_inv else cv2.THRESH_BINARY
-        _, binary = cv2.threshold(blurred, 0, 255, flag + cv2.THRESH_OTSU)
-        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
-        mask, cont, ok = _clean_connected_components(binary, h, w)
-        if ok:
-            q = _evaluate_mask_quality(mask)
-            if q > 0.1:
-                if best_mask is None or q > _evaluate_mask_quality(best_mask):
-                    best_mask, best_contour = mask, cont
-
-    if best_mask is not None:
-        best_mask = cv2.morphologyEx(best_mask, cv2.MORPH_CLOSE,
-                                      cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
-        best_mask = _fill_holes(best_mask)
-        cnt2, _ = cv2.findContours(best_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if cnt2:
-            return best_mask, max(cnt2, key=cv2.contourArea), True
-    return None, None, False
+    return clean, max(cnt_out, key=cv2.contourArea), True
 
 
 # ═══════════════════════════════════════════════
@@ -471,42 +440,89 @@ def _segment_by_edge_floodfill(img_in):
     return mask, max(cnt_out, key=cv2.contourArea), True
 
 
-def _segment_by_u2net(img_in):
-    """Strategy J: U2Net 深度学习分割。
-    使用预训练的 U²-Net 模型做像素级精确分割。
-    对阴影、光照变化、复杂背景都鲁棒。
-    首次调用会加载模型（~2s本地，云端可能30s+），后续快速。
-    如果模型加载失败或超时，自动跳过不阻塞。
+# ═══════════════════════════════════════════════
+# PRIMARY: GrabCut 固定中心矩形
+# ═══════════════════════════════════════════════
+
+def _segment_by_grabcut_center(img):
+    """Strategy A (PRIMARY): 固定中心矩形 GrabCut.
+    先降采样到 max(w,h) <= 768 加速, 再恢复.
     """
-    if not _is_u2net_ready():
+    h, w = img.shape[:2]
+    scale = 768.0 / max(h, w) if max(h, w) > 768 else 1.0
+    if scale < 1.0:
+        small = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
+        sh, sw = small.shape[:2]
+    else:
+        small = img
+        sh, sw = h, w
+
+    margin_x = max(20, int(sw * 0.10))
+    margin_y = max(20, int(sh * 0.10))
+    rect = (margin_x, margin_y, sw - 2*margin_x, sh - 2*margin_y)
+    if rect[2] < 40 or rect[3] < 40:
         return None, None, False
 
-    from PIL import Image as PILImage
-    from rembg import remove as _remove
-
-    h, w = img_in.shape[:2]
-    pil_img = PILImage.fromarray(cv2.cvtColor(img_in, cv2.COLOR_BGR2RGB))
-    output = _remove(pil_img, session=_get_u2net_session())
-
-    mask = np.array(output)[:, :, 3]
-    _, mask_bin = cv2.threshold(mask, 128, 255, cv2.THRESH_BINARY)
-    mask_bin = cv2.morphologyEx(mask_bin, cv2.MORPH_CLOSE,
-                                np.ones((5, 5), np.uint8))
-
-    contours, _ = cv2.findContours(mask_bin, cv2.RETR_EXTERNAL,
-                                   cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
+    try:
+        mask_gc = np.zeros((sh, sw), np.uint8)
+        bgd = np.zeros((1, 65), np.float64)
+        fgd = np.zeros((1, 65), np.float64)
+        cv2.grabCut(small, mask_gc, rect, bgd, fgd, 5, cv2.GC_INIT_WITH_RECT)
+    except cv2.error:
         return None, None, False
-    largest = max(contours, key=cv2.contourArea)
-    clean = np.zeros_like(mask_bin)
-    cv2.drawContours(clean, [largest], -1, 255, -1)
-    clean = _fill_holes(clean)
-    cnt_out, _ = cv2.findContours(clean, cv2.RETR_EXTERNAL,
-                                  cv2.CHAIN_APPROX_SIMPLE)
-    if not cnt_out:
-        return None, None, False
-    return clean, max(cnt_out, key=cv2.contourArea), True
 
+    bin_mask = np.where((mask_gc == 2) | (mask_gc == 0), 0, 1).astype(np.uint8) * 255
+    if scale < 1.0:
+        bin_mask = cv2.resize(bin_mask, (w, h), interpolation=cv2.INTER_NEAREST)
+
+    bin_mask = cv2.morphologyEx(bin_mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+    bin_mask = cv2.morphologyEx(bin_mask, cv2.MORPH_CLOSE,
+                                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
+    bin_mask = _fill_holes(bin_mask)
+    binary, largest = _keep_largest_contour(bin_mask)
+    if binary is None:
+        return None, None, False
+    return binary, largest, True
+
+
+# ═══════════════════════════════════════════════
+# FALLBACK 1: 灰度 Otsu + 连通筛选
+# ═══════════════════════════════════════════════
+
+def _segment_by_grayscale_otsu(img):
+    """Strategy B: 灰度 Otsu 阈值分割.
+    自动检测鸡蛋是亮是暗，同时试 BINARY 和 BINARY_INV.
+    """
+    h, w = img.shape[:2]
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    blurred = cv2.GaussianBlur(enhanced, (7, 7), 0)
+
+    best_mask, best_contour = None, None
+    for use_inv in [True, False]:
+        flag = cv2.THRESH_BINARY_INV if use_inv else cv2.THRESH_BINARY
+        _, binary = cv2.threshold(blurred, 0, 255, flag + cv2.THRESH_OTSU)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+        mask, cont, ok = _clean_connected_components(binary, h, w)
+        if ok:
+            q = _evaluate_mask_quality(mask)
+            if q > 0.1:
+                if best_mask is None or q > _evaluate_mask_quality(best_mask):
+                    best_mask, best_contour = mask, cont
+
+    if best_mask is not None:
+        best_mask = cv2.morphologyEx(best_mask, cv2.MORPH_CLOSE,
+                                     cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
+        best_mask = _fill_holes(best_mask)
+        cnt2, _ = cv2.findContours(best_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if cnt2:
+            return best_mask, max(cnt2, key=cv2.contourArea), True
+    return None, None, False
+
+
+# ═══════════════════════════════════════════════
+# HELPERS
 
 def _segment_by_contour_floodfill(img):
     """Strategy G: 阈值提取轮廓 → 膨胀闭合 → 洪水填充。
