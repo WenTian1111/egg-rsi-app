@@ -244,11 +244,19 @@ def _upload_mode():
                         st.info(f"{label}: N/A")
 
             st.markdown('---')
-            # Show which segmentation method was used
-            method = result.get('method', 'hsv')
-            method_label = {'hsv': '🎨 HSV 蓝色背景分割', 'edge': '✏️ 边缘检测分割', 'grabcut': '🖌️ GrabCut 智能分割'}
-            method_icon = method_label.get(method, '🔧 自适应分割')
-            st.caption(f"{method_icon} | 分割方法：{'HSV色域' if method=='hsv' else 'Canny边缘检测' if method=='edge' else 'GrabCut迭代分割'}")
+            # Show which segmentation strategy was used
+            strategy = result.get('strategy', '未知')
+            strategy_icons = {
+                'L*a*b*': '🎨 L*a*b* 色彩空间分割',
+                '灰度Otsu': '⚪ Otsu 阈值分割',
+                'GrabCut中心': '🖌️ GrabCut 中心矩形分割',
+                'Canny': '✏️ Canny 边缘检测分割',
+                '腐蚀法': '🔲 渐进腐蚀分割',
+            }
+            strategy_icon = strategy_icons.get(strategy, f'🔧 {strategy} 分割')
+            st.caption(f"分割策略：{strategy_icon}")
+            if result.get('warning'):
+                st.caption(f"⚠️ {result['warning']}")
             
             display_features_grid(result.get('features'))
 

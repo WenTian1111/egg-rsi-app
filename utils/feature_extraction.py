@@ -314,13 +314,13 @@ def _evaluate_mask_quality(mask):
 
 
 def _segment_egg_multi_strategy(img):
-    """通用分割（数据集照片专用）：GrabCut中心 → Otsu → 腐蚀 → Canny。
-    适用于居中、白底的数据集照片。
+    """通用分割（数据集图片专用）：Otsu → GrabCut中心 → 腐蚀 → Canny。
+    先试 Otsu（对干净的轮廓图效果最好），不行再走 GrabCut。
     Returns (clean_mask, largest_contour, strategy_name, warning).
     """
     strategies = [
-        ('GrabCut中心', _segment_by_grabcut_center),
         ('灰度Otsu', _segment_by_grayscale_otsu),
+        ('GrabCut中心', _segment_by_grabcut_center),
         ('腐蚀法', _segment_by_binary_erosion),
         ('Canny', _segment_by_edge),
     ]
@@ -329,7 +329,10 @@ def _segment_egg_multi_strategy(img):
             mask, contour, ok = func(img)
             if ok:
                 quality = _evaluate_mask_quality(mask)
-                if quality > 0.1:
+                # Otsu 对干净轮廓图效果极好，质量分高 → 直接用
+                # GrabCut 需要更高阈值（0.3+）避免截断
+                min_quality = 0.1 if name == '灰度Otsu' else 0.3
+                if quality > min_quality:
                     return mask, contour, name, None
         except Exception:
             continue

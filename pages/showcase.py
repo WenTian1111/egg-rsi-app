@@ -209,13 +209,36 @@ def _show_pipeline_tab(df):
 def _show_browser_tab(df):
     with st.sidebar:
         st.markdown("### 🔍 筛选条件")
-        risk_options = {"低风险 (1)": 1, "中风险 (2)": 2, "高风险 (3)": 3}
-        selected_risks = st.multiselect(
-            "按风险等级筛选",
-            list(risk_options.keys()),
-            default=list(risk_options.keys())
-        )
-        selected_nums = [risk_options[r] for r in selected_risks]
+        st.markdown("**按风险等级筛选:**")
+        
+        risk_colors = {
+            "低风险": {"color": "#4ECDC4", "emoji": "🟢"},
+            "中风险": {"color": "#FFE66D", "emoji": "🟡"},
+            "高风险": {"color": "#FF6B6B", "emoji": "🔴"},
+        }
+        selected_risks = []
+        cols = st.columns(3)
+        for idx, (name, info) in enumerate(risk_colors.items()):
+            with cols[idx]:
+                btn_key = f"risk_{idx}"
+                if btn_key not in st.session_state:
+                    st.session_state[btn_key] = True
+                if st.button(
+                    f"{info['emoji']} {name}",
+                    key=btn_key,
+                    use_container_width=True,
+                    type="secondary" if not st.session_state[btn_key] else "primary"
+                ):
+                    st.session_state[btn_key] = not st.session_state[btn_key]
+                    st.rerun()
+                if st.session_state[btn_key]:
+                    selected_risks.append(idx + 1)
+        
+        if not selected_risks:
+            st.caption("⚠️ 至少选一个等级")
+            selected_risks = [1, 2, 3]
+        
+        selected_nums = selected_risks
         try:
             filtered = df[df['RSI_GroupNum'].isin(selected_nums)]
         except Exception:

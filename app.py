@@ -389,6 +389,28 @@ st.markdown("""
     div[data-baseweb="tag"] {
         background: rgba(0, 180, 216, 0.15) !important;
         color: #00B4D8 !important;
+        font-size: 0.9rem !important;
+    }
+    /* ═══════ RISK FILTER BUTTONS ═══════ */
+    .risk-filter-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.4rem 1rem;
+        margin: 0.2rem;
+        border-radius: 20px;
+        border: 1.5px solid;
+        font-weight: 600;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        background: transparent;
+    }
+    .risk-filter-btn:hover {
+        transform: translateY(-1px);
+    }
+    .risk-filter-btn.active {
+        box-shadow: 0 0 12px rgba(0,0,0,0.3);
     }
 
     /* ═══════ FOOTER ═══════ */
