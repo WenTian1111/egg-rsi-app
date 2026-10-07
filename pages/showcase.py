@@ -1,13 +1,17 @@
 """
 展示页面 - 图像处理流水线 + 数据库多维分析
-西南大学大学生创新创业训练计划项目 (S202510635378)
 """
 import os
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
 from PIL import Image
+
+try:
+    import plotly.graph_objects as go
+    HAS_PLOTLY = True
+except ImportError:
+    HAS_PLOTLY = False
 
 from utils.data_loader import (
     load_fusion_data, load_model_metrics, load_feature_importance,
@@ -408,112 +412,121 @@ def _render_cyber_radar(egg_row, full_df):
     labels.append(labels[0])
     norm_vals.append(norm_vals[0])
 
-    fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(
-        r=norm_vals,
-        theta=labels,
-        fill='toself',
-        fillcolor='rgba(0, 229, 255, 0.22)',
-        line=dict(color='#00E5FF', width=2.5),
-        marker=dict(color='#00E5FF', size=7, symbol='diamond'),
-        name=f"标本 {egg_row.get('egg_id', '')} 号"
-    ))
+    if HAS_PLOTLY:
+        fig = go.Figure()
+        fig.add_trace(go.Scatterpolar(
+            r=norm_vals,
+            theta=labels,
+            fill='toself',
+            fillcolor='rgba(0, 229, 255, 0.22)',
+            line=dict(color='#00E5FF', width=2.5),
+            marker=dict(color='#00E5FF', size=7, symbol='diamond'),
+            name=f"标本 {egg_row.get('egg_id', '')} 号"
+        ))
 
-    fig.update_layout(
-        polar=dict(
-            bgcolor='rgba(14, 20, 35, 0.5)',
-            radialaxis=dict(
-                visible=True,
-                range=[0, 1],
-                color='#64748B',
-                gridcolor='rgba(255, 255, 255, 0.08)',
-                tickfont=dict(size=9, color='#64748B')
+        fig.update_layout(
+            polar=dict(
+                bgcolor='rgba(14, 20, 35, 0.5)',
+                radialaxis=dict(
+                    visible=True,
+                    range=[0, 1],
+                    color='#64748B',
+                    gridcolor='rgba(255, 255, 255, 0.08)',
+                    tickfont=dict(size=9, color='#64748B')
+                ),
+                angularaxis=dict(
+                    color='#E2E8F0',
+                    gridcolor='rgba(255, 255, 255, 0.08)',
+                    tickfont=dict(size=11, color='#E2E8F0', family='Inter, sans-serif')
+                )
             ),
-            angularaxis=dict(
-                color='#E2E8F0',
-                gridcolor='rgba(255, 255, 255, 0.08)',
-                tickfont=dict(size=11, color='#E2E8F0', family='Inter, sans-serif')
-            )
-        ),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        height=360,
-        margin=dict(l=40, r=40, t=20, b=20),
-        showlegend=False
-    )
-    st.plotly_chart(fig, use_container_width=True)
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            height=360,
+            margin=dict(l=40, r=40, t=20, b=20),
+            showlegend=False
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("💡 雷达图组件已切换至精简模式")
+        r_df = pd.DataFrame({'特征维度': labels[:-1], '相对归一化值': [f"{v:.1%}" for v in norm_vals[:-1]]})
+        st.dataframe(r_df, use_container_width=True)
 
 
 def _render_model_benchmarks():
     """渲染多模型准确率柱状图与特征重要性对比"""
     metrics_df = load_model_metrics()
     if metrics_df is not None and not metrics_df.empty:
-        col_m1, col_m2 = st.columns([1.2, 1])
-        with col_m1:
-            st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#94A3B8;margin-bottom:0.3rem;'>四模型核心分类效能对比</div>", unsafe_allow_html=True)
-            models = metrics_df['ModelName'].tolist()
-            fig = go.Figure()
+        if HAS_PLOTLY:
+            col_m1, col_m2 = st.columns([1.2, 1])
+            with col_m1:
+                st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#94A3B8;margin-bottom:0.3rem;'>四模型核心分类效能对比</div>", unsafe_allow_html=True)
+                models = metrics_df['ModelName'].tolist()
+                fig = go.Figure()
 
-            metric_configs = [
-                ('Accuracy', '#00E5FF', '准确率'),
-                ('Macro_F1', '#A78BFA', '宏平均 F1'),
-                ('Macro_AUC', '#10B981', '宏平均 AUC'),
-            ]
-            for m_key, color, label in metric_configs:
-                if m_key in metrics_df.columns:
-                    vals = metrics_df[m_key].tolist()
-                    fig.add_trace(go.Bar(
-                        name=label,
-                        x=models,
-                        y=vals,
-                        marker=dict(color=color, cornerradius=4),
-                        text=[f"{v:.1%}" for v in vals],
-                        textposition='outside',
-                        textfont=dict(color='#E2E8F0', size=10)
-                    ))
+                metric_configs = [
+                    ('Accuracy', '#00E5FF', '准确率'),
+                    ('Macro_F1', '#A78BFA', '宏平均 F1'),
+                    ('Macro_AUC', '#10B981', '宏平均 AUC'),
+                ]
+                for m_key, color, label in metric_configs:
+                    if m_key in metrics_df.columns:
+                        vals = metrics_df[m_key].tolist()
+                        fig.add_trace(go.Bar(
+                            name=label,
+                            x=models,
+                            y=vals,
+                            marker=dict(color=color, cornerradius=4),
+                            text=[f"{v:.1%}" for v in vals],
+                            textposition='outside',
+                            textfont=dict(color='#E2E8F0', size=10)
+                        ))
 
-            fig.update_layout(
-                barmode='group',
-                height=300,
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                legend=dict(orientation="h", y=1.2, font=dict(color='#E2E8F0', size=10)),
-                xaxis=dict(tickfont=dict(color='#E2E8F0'), gridcolor='rgba(255,255,255,0.05)'),
-                yaxis=dict(range=[0, 1.1], tickformat='.0%', tickfont=dict(color='#64748B'), gridcolor='rgba(255,255,255,0.05)'),
-                margin=dict(l=10, r=10, t=30, b=20)
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-        with col_m2:
-            st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#94A3B8;margin-bottom:0.3rem;'>Top 8 驱动特征重要性 (RF vs GBDT)</div>", unsafe_allow_html=True)
-            imp_df = load_feature_importance()
-            if isinstance(imp_df, pd.DataFrame) and 'RF_Importance' in imp_df.columns:
-                top8 = imp_df.head(8)
-                names = top8['ShortName'].tolist()
-                rf_v = top8['RF_Importance'].tolist()
-                gb_v = top8['GBDT_Importance'].tolist()
-
-                fig_imp = go.Figure()
-                fig_imp.add_trace(go.Bar(
-                    y=names, x=rf_v, name='随机森林 (RF)',
-                    orientation='h', marker_color='#00E5FF'
-                ))
-                fig_imp.add_trace(go.Bar(
-                    y=names, x=gb_v, name='梯度提升 (GBDT)',
-                    orientation='h', marker_color='#F59E0B'
-                ))
-                fig_imp.update_layout(
+                fig.update_layout(
                     barmode='group',
                     height=300,
                     paper_bgcolor='rgba(0,0,0,0)',
                     plot_bgcolor='rgba(0,0,0,0)',
-                    legend=dict(orientation="h", y=1.2, font=dict(color='#E2E8F0', size=9)),
-                    xaxis=dict(tickformat='.0%', tickfont=dict(color='#64748B'), gridcolor='rgba(255,255,255,0.05)'),
-                    yaxis=dict(tickfont=dict(color='#E2E8F0', size=10), categoryorder='total ascending'),
+                    legend=dict(orientation="h", y=1.2, font=dict(color='#E2E8F0', size=10)),
+                    xaxis=dict(tickfont=dict(color='#E2E8F0'), gridcolor='rgba(255,255,255,0.05)'),
+                    yaxis=dict(range=[0, 1.1], tickformat='.0%', tickfont=dict(color='#64748B'), gridcolor='rgba(255,255,255,0.05)'),
                     margin=dict(l=10, r=10, t=30, b=20)
                 )
-                st.plotly_chart(fig_imp, use_container_width=True)
-            else:
-                st.info("特征重要性比对数据载入中")
+                st.plotly_chart(fig, use_container_width=True)
+
+            with col_m2:
+                st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#94A3B8;margin-bottom:0.3rem;'>Top 8 驱动特征重要性 (RF vs GBDT)</div>", unsafe_allow_html=True)
+                imp_df = load_feature_importance()
+                if isinstance(imp_df, pd.DataFrame) and 'RF_Importance' in imp_df.columns:
+                    top8 = imp_df.head(8)
+                    names = top8['ShortName'].tolist()
+                    rf_v = top8['RF_Importance'].tolist()
+                    gb_v = top8['GBDT_Importance'].tolist()
+
+                    fig_imp = go.Figure()
+                    fig_imp.add_trace(go.Bar(
+                        y=names, x=rf_v, name='随机森林 (RF)',
+                        orientation='h', marker_color='#00E5FF'
+                    ))
+                    fig_imp.add_trace(go.Bar(
+                        y=names, x=gb_v, name='梯度提升 (GBDT)',
+                        orientation='h', marker_color='#F59E0B'
+                    ))
+                    fig_imp.update_layout(
+                        barmode='group',
+                        height=300,
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        legend=dict(orientation="h", y=1.2, font=dict(color='#E2E8F0', size=9)),
+                        xaxis=dict(tickformat='.0%', tickfont=dict(color='#64748B'), gridcolor='rgba(255,255,255,0.05)'),
+                        yaxis=dict(tickfont=dict(color='#E2E8F0', size=10), categoryorder='total ascending'),
+                        margin=dict(l=10, r=10, t=30, b=20)
+                    )
+                    st.plotly_chart(fig_imp, use_container_width=True)
+                else:
+                    st.info("特征重要性比对数据载入中")
+        else:
+            st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#94A3B8;margin-bottom:0.3rem;'>四模型核心分类效能对比</div>", unsafe_allow_html=True)
+            st.dataframe(metrics_df, use_container_width=True)
     else:
         st.info("模型基准指标暂不可用")
