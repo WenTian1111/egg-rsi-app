@@ -142,7 +142,12 @@ def generate_pipeline_images(egg_id):
     """
     from utils.feature_extraction import _segment_egg_multi_strategy
     img_path = get_egg_image_path(egg_id)
-    img = cv2.imread(img_path)
+    if not os.path.exists(img_path):
+        return None
+    try:
+        img = cv2.imdecode(np.fromfile(img_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+    except Exception:
+        img = cv2.imread(img_path)
     if img is None:
         return None
 
