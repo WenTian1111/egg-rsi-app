@@ -1,9 +1,12 @@
 """
-鸡蛋滚落稳定性分析系统 - 主入口
-西南大学大学生创新创业训练计划项目 (S202510635378)
+鸡蛋滚落稳定性智能分析系统 - 主入口
+工业计算机视觉与多模态机器学习驱动
 """
 import os
 import streamlit as st
+from PIL import Image
+
+Image.MAX_IMAGE_PIXELS = None
 
 st.set_page_config(
     page_title="鸡蛋滚落稳定性分析系统 | Egg RSI Analyzer",
@@ -524,9 +527,9 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("""
     <div style="padding: 0.4rem; color: #64748B; font-size: 0.75rem; text-align: center;">
-        🏛️ <b>西南大学创新训练项目</b><br>
-        指导教师：李长营 教授<br>
-        项目编号：S202510635378
+        ⚙️ <b>禽蛋滚落动力学分析系统</b><br>
+        体系架构：v2.5 Pro 智能分选版<br>
+        机器视觉与多模型融合驱动
     </div>
     """, unsafe_allow_html=True)
 
@@ -554,10 +557,10 @@ st.markdown("""
                 <span>推理核心：在线就绪</span>
             </div>
             <div class="header-badge">
-                <span>🏛️ 西南大学大创项目</span>
+                <span>🔬 视觉解耦：19D 形态空间</span>
             </div>
             <div class="header-badge">
-                <span>编号: S202510635378</span>
+                <span>🤖 决策引擎：四算法集成</span>
             </div>
         </div>
     </div>
