@@ -1,13 +1,17 @@
 """
 预测页面 - 鸡蛋滚落风险智能预测与分选决策
-西南大学大学生创新创业训练计划项目 (S202510635378)
 """
 import os
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
 from PIL import Image
+
+try:
+    import plotly.graph_objects as go
+    HAS_PLOTLY = True
+except ImportError:
+    HAS_PLOTLY = False
 
 from utils.data_loader import (
     load_fusion_data, RSI_LABELS, STATIC_FEATURES_19,
@@ -337,31 +341,66 @@ def _display_diagnostic_report(prediction, probabilities, model_name):
             ('高风险 🔴', p_high, '#EF4444'),
         ]
 
-        fig = go.Figure()
-        for label, prob, bar_c in prob_data:
-            fig.add_trace(go.Bar(
-                y=[label],
-                x=[prob],
-                orientation='h',
-                marker=dict(color=bar_c, cornerradius=5),
-                text=[f"{prob:.1%}"],
-                textposition='inside',
-                insidetextanchor='middle',
-                textfont=dict(color='#FFFFFF', size=13, family='JetBrains Mono, monospace'),
-                hoverinfo='none',
-                showlegend=False
-            ))
+        if HAS_PLOTLY:
+            fig = go.Figure()
+            for label, prob, bar_c in prob_data:
+                fig.add_trace(go.Bar(
+                    y=[label],
+                    x=[prob],
+                    orientation='h',
+                    marker=dict(color=bar_c, cornerradius=5),
+                    text=[f"{prob:.1%}"],
+                    textposition='inside',
+                    insidetextanchor='middle',
+                    textfont=dict(color='#FFFFFF', size=13, family='JetBrains Mono, monospace'),
+                    hoverinfo='none',
+                    showlegend=False
+                ))
 
-        fig.update_layout(
-            title=dict(text='各风险类别后验概率分布 (Class Probability Distribution)', font=dict(color='#E2E8F0', size=13)),
-            xaxis=dict(range=[0, 1], tickformat='.0%', tickfont=dict(color='#64748B'), gridcolor='rgba(255,255,255,0.05)'),
-            yaxis=dict(tickfont=dict(color='#E2E8F0', size=11), categoryorder='array', categoryarray=['高风险 🔴', '中风险 🟡', '低风险 🟢']),
-            height=200,
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            margin=dict(l=10, r=20, t=35, b=20)
-        )
-        st.plotly_chart(fig, use_container_width=True)
+            fig.update_layout(
+                title=dict(text='各风险类别后验概率分布 (Class Probability Distribution)', font=dict(color='#E2E8F0', size=13)),
+                xaxis=dict(range=[0, 1], tickformat='.0%', tickfont=dict(color='#64748B'), gridcolor='rgba(255,255,255,0.05)'),
+                yaxis=dict(tickfont=dict(color='#E2E8F0', size=11), categoryorder='array', categoryarray=['高风险 🔴', '中风险 🟡', '低风险 🟢']),
+                height=200,
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                margin=dict(l=10, r=20, t=35, b=20)
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            # 纯 HTML/CSS 科技水平进度条优雅降级
+            st.markdown(f"""
+            <div style="background: rgba(14, 20, 35, 0.7); border: 1px solid rgba(255,255,255,0.06);
+                        border-radius: 12px; padding: 1.1rem; height: 100%;">
+                <div style="font-size: 0.88rem; font-weight: 600; color: #E2E8F0; margin-bottom: 0.8rem;">
+                    各风险类别后验概率分布 (Class Probability Distribution)
+                </div>
+                <div style="margin-bottom: 0.6rem;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #94A3B8; margin-bottom: 0.2rem;">
+                        <span>低风险 🟢</span><span style="font-family: var(--font-mono); color: #10B981; font-weight: 700;">{p_low:.1%}</span>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.06); height: 8px; border-radius: 4px; overflow: hidden;">
+                        <div style="background: #10B981; width: {max(2, int(p_low*100))}%; height: 100%; border-radius: 4px;"></div>
+                    </div>
+                </div>
+                <div style="margin-bottom: 0.6rem;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #94A3B8; margin-bottom: 0.2rem;">
+                        <span>中风险 🟡</span><span style="font-family: var(--font-mono); color: #F59E0B; font-weight: 700;">{p_mid:.1%}</span>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.06); height: 8px; border-radius: 4px; overflow: hidden;">
+                        <div style="background: #F59E0B; width: {max(2, int(p_mid*100))}%; height: 100%; border-radius: 4px;"></div>
+                    </div>
+                </div>
+                <div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #94A3B8; margin-bottom: 0.2rem;">
+                        <span>高风险 🔴</span><span style="font-family: var(--font-mono); color: #EF4444; font-weight: 700;">{p_high:.1%}</span>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.06); height: 8px; border-radius: 4px; overflow: hidden;">
+                        <div style="background: #EF4444; width: {max(2, int(p_high*100))}%; height: 100%; border-radius: 4px;"></div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
     # 工业产线分选决策建议指示
     advice_registry = {
@@ -420,4 +459,4 @@ def _render_research_insights():
             traj_img = os.path.join(assets_dir, 'trajectory_tracking.jpg')
             if os.path.exists(traj_img):
                 st.image(traj_img, caption="图 3.2 动态滚落过程高速相机实时轨迹追踪效果", use_container_width=True)
-        st.caption("研究数据源自西南大学物理滚落试验台270组连续追踪实测记录。")
+        st.caption("研究数据源自物理滚落试验台 270 组连续追踪实测记录。")
