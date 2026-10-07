@@ -1,32 +1,65 @@
-"""展示页面 - 图像处理流水线 + 数据库浏览"""
+"""
+展示页面 - 图像处理流水线 + 数据库多维分析
+西南大学大学生创新创业训练计划项目 (S202510635378)
+"""
+import os
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
-import os
 from PIL import Image
 
 from utils.data_loader import (
     load_fusion_data, load_model_metrics, load_feature_importance,
-    RSI_LABELS, STATIC_FEATURES_19, get_egg_image_path, get_processing_images
+    RSI_LABELS, STATIC_FEATURES_19, get_egg_image_path,
+    generate_pipeline_images, get_processing_images
 )
 
 
+def _safe_get_column(df, candidates, default=None):
+    """安全获取 DataFrame 中可能存在的候选列名之一。"""
+    for col in candidates:
+        if col in df.columns:
+            return col
+    return default
+
+
 def show_showcase():
-    st.markdown('<div class="section-header">🔬 展示</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+            <span style="font-size: 1.5rem;">🔬</span>
+            <span style="font-size: 1.35rem; font-weight: 700; color: #FFFFFF;">数据库全景展示与形态分析</span>
+            <span style="background: rgba(0, 229, 255, 0.1); border: 1px solid rgba(0, 229, 255, 0.3);
+                         color: #00E5FF; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.75rem;">
+                Database & Vision Telemetry
+            </span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     try:
         df = load_fusion_data()
-        if df is None:
-            st.error("❌ 数据加载失败，请检查数据文件是否存在")
+        if df is None or df.empty:
+            st.error("❌ 无法加载数据集，请检查 data/ 目录下的数据文件。")
             return
     except Exception as e:
         st.error(f"❌ 数据加载失败: {str(e)}")
         return
 
-    if 'selected_egg' not in st.session_state:
-        st.session_state.selected_egg = sorted(df["EggID"].unique())[0]
+    # 规范化关键列名映射
+    id_col = _safe_get_column(df, ['EggID', 'egg_id'], 'egg_id')
+    rsi_col = _safe_get_column(df, ['RSI_GroupNum', 'RSI'], 'RSI')
 
-    tab1, tab2 = st.tabs(["🧪 图像处理流水线", "📋 数据库浏览"])
+    if id_col != 'egg_id':
+        df['egg_id'] = df[id_col]
+    if rsi_col != 'RSI':
+        df['RSI'] = df[rsi_col]
+
+    tab1, tab2 = st.tabs([
+        "🧪 智能视觉处理流水线 (Vision Pipeline)",
+        "📋 样本多维画像与模型基准 (Database Explorer & Benchmark)"
+    ])
 
     with tab1:
         _show_pipeline_tab(df)
@@ -36,449 +69,451 @@ def show_showcase():
 
 
 def _show_pipeline_tab(df):
-    st.markdown("### 📷 图像处理流程（1号鸡蛋）")
+    """智能视觉处理流水线子标签"""
+    st.markdown("""
+    <div style="background: rgba(14, 20, 35, 0.6); border: 1px solid rgba(255, 255, 255, 0.06);
+                border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.2rem;">
+        <div style="font-weight: 600; color: #00E5FF; font-size: 0.95rem; margin-bottom: 0.3rem;">
+            ⚙️ 计算机视觉形态解耦流水线 (Computer Vision Decomposition Pipeline)
+        </div>
+        <div style="color: #94A3B8; font-size: 0.85rem; line-height: 1.5;">
+            系统通过标准工业镜头采集禽蛋静态顶视图像，经由<b>灰度直方图均衡</b>、<b>自适应阈值分割与形态学去噪</b>，
+            提取封闭外轮廓并拟合最小外接矩形与等效椭圆，最终解析出 19 项与滚动稳定性强相关的几何与矩特征。
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    try:
-        img_paths = get_processing_images()
-        if img_paths is None:
-            img_paths = {}
-    except Exception as e:
-        st.warning(f"无法加载处理图像: {str(e)}")
-        img_paths = {}
+    egg_ids = sorted(df['egg_id'].unique().tolist())
+    col_sel, col_stat = st.columns([1, 2])
+    with col_sel:
+        selected_egg = st.selectbox(
+            "选择待观测标本编号",
+            egg_ids,
+            key="pipeline_egg_select",
+            format_func=lambda x: f"第 {x} 号鸡蛋标本"
+        )
+    with col_stat:
+        egg_row = df[df['egg_id'] == selected_egg].iloc[0]
+        rsi_val = int(egg_row.get('RSI', 1))
+        risk_name, risk_col, risk_icon = RSI_LABELS.get(rsi_val, ('未知', '#94A3B8', '⚪'))
+        esi_val = egg_row.get('Static_ShapeIndex_机器视觉ESI', 0)
+        area_val = egg_row.get('Static_Area_像素面积', 0)
+        st.markdown(f"""
+        <div style="display: flex; gap: 0.8rem; align-items: center; height: 100%; padding-top: 1.4rem;">
+            <div style="background: rgba(14, 20, 35, 0.8); border: 1px solid {risk_col}44; border-radius: 10px;
+                        padding: 0.4rem 0.8rem; display: flex; align-items: center; gap: 0.4rem;">
+                <span>{risk_icon}</span>
+                <span style="font-size: 0.82rem; color: #94A3B8;">实际评级:</span>
+                <span style="font-weight: 700; color: {risk_col};">{risk_name}</span>
+            </div>
+            <div style="background: rgba(14, 20, 35, 0.8); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px;
+                        padding: 0.4rem 0.8rem; display: flex; align-items: center; gap: 0.4rem;">
+                <span style="font-size: 0.82rem; color: #94A3B8;">蛋形指数(ESI):</span>
+                <span style="font-weight: 700; color: #00E5FF; font-family: var(--font-mono);">{esi_val:.4f}</span>
+            </div>
+            <div style="background: rgba(14, 20, 35, 0.8); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px;
+                        padding: 0.4rem 0.8rem; display: flex; align-items: center; gap: 0.4rem;">
+                <span style="font-size: 0.82rem; color: #94A3B8;">像素面积:</span>
+                <span style="font-weight: 700; color: #FFFFFF; font-family: var(--font-mono);">{area_val:.0f} px²</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    image_names = {
-        'original': '原图',
-        'grayscale': '灰度图',
-        'mask': '二值掩膜图',
-        'contour': '轮廓质心包围盒图'
-    }
+    # 4 步流水线图像展示
+    with st.spinner(f"正在实时计算标本 {selected_egg} 号的处理图谱..."):
+        try:
+            pipeline = generate_pipeline_images(selected_egg)
+        except Exception:
+            pipeline = None
 
-    row1_cols = st.columns(2)
-    row2_cols = st.columns(2)
-
-    for idx, (key, caption) in enumerate(image_names.items()):
-        img_data = img_paths.get(key)
-        col = row1_cols[idx] if idx < 2 else row2_cols[idx - 2]
-
-        with col:
-            if img_data is not None:
-                try:
-                    st.image(img_data, caption=caption, use_container_width=False, width=350)
-                except Exception:
-                    st.markdown(f'''
-                    <div style="width: 350px; height: 280px; background-color: #1A1C23; border: 1px solid #2D2D3D;
-                                border-radius: 12px; display: flex; align-items: center; justify-content: center;">
-                        <span style="color: #ADB5BD;">图像加载失败</span>
-                    </div>
-                    ''', unsafe_allow_html=True)
-            else:
-                st.markdown(f'''
-                <div style="width: 350px; height: 280px; background-color: #1A1C23; border: 1px solid #2D2D3D;
-                            border-radius: 12px; display: flex; align-items: center; justify-content: center;">
-                    <span style="color: #ADB5BD;">暂无图像</span>
-                </div>
-                ''', unsafe_allow_html=True)
-
-    st.markdown("### 📊 特征提取结果")
-
-    # 实验平台图（论文附件）— 可展开查看
-    with st.expander("🔬 点击查看实验平台与论文配套图表", expanded=False):
-        import os
-        assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets')
-        plat_img = os.path.join(assets_dir, 'experiment_platform.png')
-        if os.path.exists(plat_img):
-            st.markdown('<div class="paper-image">', unsafe_allow_html=True)
-            st.image(plat_img, use_container_width=True)
-            st.markdown('<div class="img-caption">图2.1 实验平台 — 静态图像采集区 + 动态滚落区</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-        risk_img = os.path.join(assets_dir, 'risk_validation.jpg')
-        if os.path.exists(risk_img):
-            st.image(risk_img, use_container_width=True)
-
-    egg_ids = sorted(df["EggID"].unique())
-    selected_egg = st.selectbox(
-        "选择鸡蛋",
-        egg_ids,
-        index=egg_ids.index(st.session_state.selected_egg) if st.session_state.selected_egg in egg_ids else 0,
-        format_func=lambda x: f"{x}号鸡蛋"
-    )
-    st.session_state.selected_egg = selected_egg
-
-    egg_row = df[df['EggID'] == selected_egg].iloc[0]
-    rsi_group = int(egg_row['RSI_GroupNum'])
-
-    feat_cols = st.columns(3)
-    features = [
-        ('Static_ShapeIndex_机器视觉ESI', '蛋形指数 (ESI)'),
-        ('Static_AsymmetryIndex_不对称指数', '不对称指数'),
-        ('Static_Eccentricity_离心率', '离心率'),
-        ('Static_Area_像素面积', '像素面积'),
-        ('Static_Perimeter_轮廓周长', '轮廓周长'),
-        ('Static_Circularity_圆形度', '圆形度'),
+    steps = [
+        ('original', '01. 原始光学采集', '顶视校准色温光学图像', '#38BDF8'),
+        ('grayscale', '02. 灰度矩阵转换', '单通道亮度直方图均衡', '#A78BFA'),
+        ('mask', '03. 掩膜二值分割', '形态学开闭运算去杂噪', '#00E5FF'),
+        ('contour', '04. 轮廓质心与包围盒', '最小外接矩形与质心偏移', '#10B981'),
     ]
 
-    for idx, (col_name, label) in enumerate(features):
-        with feat_cols[idx % 3]:
-            try:
-                val = egg_row.get(col_name, 0)
-                st.markdown(f'''
-                <div class="metric-card">
-                    <div class="metric-value">{val:.4f}</div>
-                    <div class="metric-label">{label}</div>
+    cols = st.columns(4)
+    for idx, (key, title, subtitle, accent) in enumerate(steps):
+        with cols[idx]:
+            img_bgr = pipeline.get(key) if pipeline else None
+            st.markdown(f"""
+            <div style="background: rgba(14, 20, 35, 0.7); border: 1px solid rgba(255, 255, 255, 0.08);
+                        border-radius: 12px; padding: 0.6rem; margin-bottom: 0.6rem; text-align: center;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+                    <span style="font-size: 0.8rem; font-weight: 700; color: {accent};">{title}</span>
+                    <span style="font-size: 0.68rem; color: #64748B; background: rgba(255,255,255,0.04);
+                                 padding: 0.1rem 0.4rem; border-radius: 4px;">Step {idx+1}</span>
                 </div>
-                ''', unsafe_allow_html=True)
-            except Exception:
-                st.markdown(f'''
-                <div class="metric-card">
-                    <div class="metric-value">N/A</div>
-                    <div class="metric-label">{label}</div>
-                </div>
-                ''', unsafe_allow_html=True)
+                <div style="font-size: 0.72rem; color: #94A3B8; margin-bottom: 0.5rem; text-align: left;">{subtitle}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-    if idx % 3 != 0:
-        for _ in range(3 - (idx % 3)):
-            st.empty()
+            if img_bgr is not None:
+                import cv2
+                img_rgb = Image.fromarray(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB))
+                st.image(img_rgb, use_container_width=True)
+            else:
+                # 降级尝试专用预存图片或占位
+                contour_path = get_egg_image_path(selected_egg)
+                if os.path.exists(contour_path) and key in ['contour', 'original']:
+                    st.image(contour_path, use_container_width=True)
+                else:
+                    st.markdown("""
+                    <div style="height: 200px; background: rgba(15, 23, 42, 0.5); border: 1px dashed rgba(255,255,255,0.1);
+                                border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #64748B;">
+                        图谱处理中或未载入
+                    </div>
+                    """, unsafe_allow_html=True)
 
-    st.markdown("#### 🔬 Hu 矩特征")
+    st.markdown("<div style='height: 1.2rem;'></div>", unsafe_allow_html=True)
 
-    hu_features = ['Static_Hu1', 'Static_Hu2', 'Static_Hu3', 'Static_Hu4',
-                    'Static_Hu5', 'Static_Hu6', 'Static_Hu7']
-    hu_labels = ['Hu1', 'Hu2', 'Hu3', 'Hu4', 'Hu5', 'Hu6', 'Hu7']
+    # 19 维特征数字仪表盘
+    st.markdown("""
+    <div class="section-title">
+        <span class="section-title-icon">📊</span>
+        <span>19 维形态特征数字遥测看板 (Morphological Telemetry Dashboard)</span>
+    </div>
+    """, unsafe_allow_html=True)
 
-    hu_data = []
-    for hu_col in hu_features:
-        try:
-            val = egg_row.get(hu_col, 0)
-            hu_data.append({"Hu矩": hu_col.replace('Static_', ''), "数值": val})
-        except Exception:
-            hu_data.append({"Hu矩": hu_col.replace('Static_', ''), "数值": 0})
+    # 12 项基础形态几何参数
+    st.markdown("##### 📐 基础几何形态参数 (12项解耦变量)")
+    basic_feature_meta = [
+        ('Static_ShapeIndex_机器视觉ESI', '蛋形指数 (ESI)', '', '短轴/长轴比值，直观反映饱满度'),
+        ('Static_AsymmetryIndex_不对称指数', '不对称指数', '', '锐端与钝端曲率偏心差异'),
+        ('Static_Eccentricity_离心率', '离心率', '', '椭圆拟合焦距比值，越近0越圆'),
+        ('Static_Area_像素面积', '像素面积', 'px²', '蛋体在顶视平面的投影绝对像素数'),
+        ('Static_Perimeter_轮廓周长', '轮廓周长', 'px', '封闭外边界像素欧氏距离累计'),
+        ('Static_MajorAxisLength_长轴像素长', '长轴像素长度', 'px', '等效椭圆第一主轴像素尺度'),
+        ('Static_MinorAxisLength_短轴像素长', '短轴像素长度', 'px', '等效椭圆第二主轴像素尺度'),
+        ('Static_Circularity_圆形度', '圆形度', '', '4π*面积/周长²，越接近1越规整'),
+        ('Static_Solidity_坚实度', '坚实度', '', '蛋体面积与凸包面积比值'),
+        ('Static_Extent_延展度', '延展度', '', '蛋体面积与外接矩形面积比值'),
+        ('Static_EquivalentDiameter_等效圆直径', '等效圆直径', 'px', '相同面积圆的等效直径'),
+        ('Static_MajorAxisOffsetRatio_长轴偏移率', '长轴偏移率', '', '质心相对几何中心在主轴上的位移比'),
+    ]
 
-    try:
-        st.table(pd.DataFrame(hu_data))
-    except Exception:
-        st.info("Hu矩数据暂不可用")
+    col_grid = st.columns(4)
+    for idx, (col_name, label_cn, unit, tooltip) in enumerate(basic_feature_meta):
+        val = egg_row.get(col_name, 0)
+        with col_grid[idx % 4]:
+            if isinstance(val, float):
+                disp_val = f"{val:.4f}" if abs(val) < 1000 else f"{val:.1f}"
+            else:
+                disp_val = str(val)
+            unit_str = f" <span style='font-size:0.7rem;color:#64748B;'>{unit}</span>" if unit else ""
+            st.markdown(f"""
+            <div class="metric-cell" title="{tooltip}">
+                <div class="metric-cell-value">{disp_val}{unit_str}</div>
+                <div class="metric-cell-label">{label_cn}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-    st.markdown("### 🎯 风险预测")
+    # 7 项不变 Hu 矩矩阵
+    st.markdown("<div style='height: 0.8rem;'></div>", unsafe_allow_html=True)
+    st.markdown("##### 🎯 7 阶正交不变 Hu 矩矩阵 (Hu Invariant Moments Matrix)")
+    hu_keys = [f'Static_Hu{i}' for i in range(1, 8)]
+    hu_cols = st.columns(7)
+    for i, hu_key in enumerate(hu_keys):
+        with hu_cols[i]:
+            hu_val = egg_row.get(hu_key, 0)
+            if isinstance(hu_val, float):
+                hu_disp = f"{hu_val:.3e}" if abs(hu_val) < 0.01 else f"{hu_val:.4f}"
+            else:
+                hu_disp = str(hu_val)
+            st.markdown(f"""
+            <div style="background: rgba(14, 20, 35, 0.8); border: 1px solid rgba(255,255,255,0.06);
+                        border-radius: 8px; padding: 0.6rem 0.4rem; text-align: center;">
+                <div style="font-size: 0.72rem; color: #A78BFA; font-weight: 600; margin-bottom: 0.2rem;">Hu {i+1}</div>
+                <div style="font-family: var(--font-mono); font-size: 0.85rem; color: #FFFFFF; font-weight: 600;">{hu_disp}</div>
+                <div style="font-size: 0.62rem; color: #64748B; margin-top: 0.2rem;">阶不变性</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-    risk_col1, risk_col2 = st.columns([1, 1])
-
-    with risk_col1:
-        risk_label, risk_color, risk_icon = RSI_LABELS.get(rsi_group, ('未知', '#ADB5BD', '⚪'))
-        st.markdown(f'''
-        <div class="card" style="border-left: 4px solid {risk_color};">
-            <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">{risk_icon} 风险等级</div>
-            <div style="font-size: 1.8rem; font-weight: 700; color: {risk_color};">{risk_label}</div>
-        </div>
-        ''', unsafe_allow_html=True)
-
-    with risk_col2:
-        advice = {
-            1: "该鸡蛋滚落稳定性良好，可采用标准输送流程，无需特殊处理。",
-            2: "该鸡蛋滚落时存在一定偏移与姿态波动风险，建议降低输送速度或增加缓冲装置。",
-            3: "该鸡蛋滚落稳定性较差，轨迹偏移显著，建议单独通道处理，避免与其它鸡蛋碰撞。"
-        }.get(rsi_group, "暂无建议")
-        st.markdown(f'''
-        <div class="card">
-            <div style="font-size: 1.1rem; font-weight: 600; color: #00B4D8; margin-bottom: 0.5rem;">📋 分选建议</div>
-            <div style="color: #E0E0E0;">{advice}</div>
-        </div>
-        ''', unsafe_allow_html=True)
-
-    st.markdown("### 📈 RSI 风险分布")
-
-    try:
-        risk_counts = df['RSI_GroupNum'].value_counts().sort_index()
-        total_count = len(df)
-
-        bar_data = []
-        for grp in [1, 2, 3]:
-            label, color, _ = RSI_LABELS.get(grp, ('未知', '#ADB5BD', ''))
-            count = risk_counts.get(grp, 0)
-            pct = count / total_count * 100 if total_count > 0 else 0
-            bar_data.append({"风险等级": label, "数量": count, "占比": pct, "颜色": color})
-
-        fig_bar = go.Figure()
-        for item in bar_data:
-            fig_bar.add_trace(go.Bar(
-                x=[item["风险等级"]],
-                y=[item["数量"]],
-                marker_color=item["颜色"],
-                text=f"{item['占比']:.1f}%",
-                textposition='auto',
-                name=item["风险等级"]
-            ))
-        fig_bar.update_layout(
-            title=dict(text='鸡蛋风险等级分布', font=dict(color='#ADB5BD', size=14)),
-            xaxis=dict(title='风险等级', tickfont=dict(color='#ADB5BD'), gridcolor='#2D2D3D'),
-            yaxis=dict(title='鸡蛋数量', tickfont=dict(color='#ADB5BD'), gridcolor='#2D2D3D'),
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            height=300,
-        )
-        st.plotly_chart(fig_bar, use_container_width=True)
-    except Exception:
-        st.info("风险分布图表暂不可用")
+    # 学术科研成果画廊 (Bento 风格展开)
+    st.markdown("<div style='height: 1.2rem;'></div>", unsafe_allow_html=True)
+    with st.expander("🔬 点击展开论文实验台装置与验证机理全景 (Academic Apparatus & Findings)", expanded=False):
+        assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets')
+        g1, g2 = st.columns(2)
+        with g1:
+            plat_img = os.path.join(assets_dir, 'experiment_platform.png')
+            if os.path.exists(plat_img):
+                st.image(plat_img, caption="图 2.1 物理滚落实验平台 — 静态机器视觉采集区 + 动态倾角滚落导轨", use_container_width=True)
+            risk_img = os.path.join(assets_dir, 'risk_validation.jpg')
+            if os.path.exists(risk_img):
+                st.image(risk_img, caption="图 2.2 风险分级与动力学失稳关联性实测验证", use_container_width=True)
+        with g2:
+            road_img = os.path.join(assets_dir, 'roadmap.png')
+            if os.path.exists(road_img):
+                st.image(road_img, caption="图 2.3 技术路线流程图 — 多特征提取与融合分类架构", use_container_width=True)
+            mech_img = os.path.join(assets_dir, 'egg_physics.png')
+            if os.path.exists(mech_img):
+                st.image(mech_img, caption="图 2.4 蛋体几何各向异性导致偏心力矩机制解析", use_container_width=True)
 
 
 def _show_browser_tab(df):
-    with st.sidebar:
-        st.markdown("### 🔍 筛选条件")
-        st.markdown("**按风险等级筛选:**")
-        
-        # Initialize toggle states (using non-widget keys)
-        if 'risk_toggle_0' not in st.session_state:
-            st.session_state['risk_toggle_0'] = True
-        if 'risk_toggle_1' not in st.session_state:
-            st.session_state['risk_toggle_1'] = True
-        if 'risk_toggle_2' not in st.session_state:
-            st.session_state['risk_toggle_2'] = True
-        
-        risk_configs = [
-            ('低风险', '#4ECDC4', '🟢', 'risk_toggle_0', 1),
-            ('中风险', '#FFE66D', '🟡', 'risk_toggle_1', 2),
-            ('高风险', '#FF6B6B', '🔴', 'risk_toggle_2', 3),
-        ]
-        selected_risks = []
-        cols = st.columns(3)
-        for idx, btn in enumerate(cols):
-            name, color, emoji, state_key, level = risk_configs[idx]
-            with btn:
-                is_active = st.session_state[state_key]
-                label = f"{emoji} {name}"
-                if st.button(
-                    label,
-                    key=f"risk_btn_{idx}",
-                    use_container_width=True,
-                    type="primary" if is_active else "secondary"
-                ):
-                    st.session_state[state_key] = not st.session_state[state_key]
-                    st.rerun()
-                if st.session_state[state_key]:
-                    selected_risks.append(level)
-        
-        if not selected_risks:
-            st.caption("⚠️ 至少选一个等级")
-            selected_risks = [1, 2, 3]
-        
-        selected_nums = selected_risks
-        try:
-            filtered = df[df['RSI_GroupNum'].isin(selected_nums)]
-        except Exception:
-            filtered = df
+    """样本多维画像与模型基准测试子标签"""
+    st.markdown("""
+    <div style="background: rgba(14, 20, 35, 0.6); border: 1px solid rgba(255, 255, 255, 0.06);
+                border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.2rem;">
+        <div style="font-weight: 600; color: #00E5FF; font-size: 0.95rem; margin-bottom: 0.3rem;">
+            📋 样本画像探查与多算法竞技场 (Sample Profiler & ML Model Benchmark)
+        </div>
+        <div style="color: #94A3B8; font-size: 0.85rem; line-height: 1.5;">
+            交互式探索 90 枚标本库的多维雷达画像，对比随机森林 (RF)、梯度提升 (GBDT)、支持向量机 (SVM)
+            与逻辑回归 (LR) 四种主流分类器在宏准确率与 AUC 上的表现。
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-        egg_ids = sorted(filtered['EggID'].unique())
-        selected_egg = st.selectbox("选择鸡蛋", egg_ids, format_func=lambda x: f"{x}号鸡蛋")
+    # 顶部快捷过滤器
+    f_col1, f_col2, f_col3 = st.columns([1.2, 1, 1.8])
+    with f_col1:
+        risk_filter = st.multiselect(
+            "筛选风险评级",
+            options=[1, 2, 3],
+            default=[1, 2, 3],
+            format_func=lambda x: f"{RSI_LABELS.get(x, ('未知','','⚪'))[2]} {RSI_LABELS.get(x, ('未知','',''))[0]}"
+        )
+    if not risk_filter:
+        risk_filter = [1, 2, 3]
 
-        st.markdown("---")
-        try:
-            total_eggs = df['EggID'].nunique()
-            st.metric("总鸡蛋数", total_eggs)
-            st.metric("总试验次数", len(df))
-        except Exception:
-            pass
-
-    egg_data = df[df['EggID'] == selected_egg]
-    if len(egg_data) == 0:
-        st.warning("暂无该鸡蛋的数据")
+    filtered_df = df[df['RSI'].isin(risk_filter)]
+    egg_options = sorted(filtered_df['egg_id'].unique().tolist())
+    if not egg_options:
+        st.warning("⚠️ 当前筛选条件下无符合样本")
         return
 
-    egg_row = egg_data.iloc[0]
-    rsi_group = int(egg_row['RSI_GroupNum'])
+    with f_col2:
+        selected_egg = st.selectbox(
+            "选择比对标本",
+            egg_options,
+            format_func=lambda x: f"{x}号鸡蛋标本"
+        )
+    with f_col3:
+        n_low = len(df[df['RSI'] == 1])
+        n_mid = len(df[df['RSI'] == 2])
+        n_high = len(df[df['RSI'] == 3])
+        st.markdown(f"""
+        <div style="display: flex; gap: 0.6rem; align-items: center; padding-top: 1.6rem;">
+            <span style="font-size: 0.78rem; color: #64748B;">标本库结构:</span>
+            <span style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3);
+                         color: #10B981; padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.78rem; font-weight: 600;">
+                🟢 低风险: {n_low}
+            </span>
+            <span style="background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3);
+                         color: #F59E0B; padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.78rem; font-weight: 600;">
+                🟡 中风险: {n_mid}
+            </span>
+            <span style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3);
+                         color: #EF4444; padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.78rem; font-weight: 600;">
+                🔴 高风险: {n_high}
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
 
-    col_img, col_info = st.columns([1, 1])
+    egg_row = filtered_df[filtered_df['egg_id'] == selected_egg].iloc[0]
+    rsi_level = int(egg_row.get('RSI', 1))
+    r_name, r_color, r_icon = RSI_LABELS.get(rsi_level, ('未知', '#94A3B8', '⚪'))
 
-    with col_img:
-        try:
-            img_path = get_egg_image_path(selected_egg)
-            if os.path.exists(img_path):
-                img = Image.open(img_path)
-                st.image(img, caption=f"{selected_egg}号鸡蛋 — 轮廓提取结果", use_container_width=True)
-            else:
-                st.markdown(f'''
-                <div style="background-color: #1A1C23; border: 1px solid #2D2D3D; border-radius: 12px;
-                            padding: 3rem; text-align: center;">
-                    <span style="color: #ADB5BD;">暂无图像</span>
+    # 左右两栏布局：左侧标本画卷，右侧雷达图与基准对比
+    left_col, right_col = st.columns([1, 1.6])
+
+    with left_col:
+        st.markdown(f"""
+        <div class="sci-card" style="border-top: 3px solid {r_color};">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
+                <div style="font-weight: 700; font-size: 1.1rem; color: #FFFFFF;">第 {selected_egg} 号标本详情</div>
+                <div style="background: {r_color}22; border: 1px solid {r_color}; color: {r_color};
+                            padding: 0.2rem 0.6rem; border-radius: 9999px; font-weight: 700; font-size: 0.8rem;">
+                    {r_icon} {r_name}
                 </div>
-                ''', unsafe_allow_html=True)
-        except Exception:
-            st.markdown(f'''
-            <div style="background-color: #1A1C23; border: 1px solid #2D2D3D; border-radius: 12px;
-                        padding: 3rem; text-align: center;">
-                <span style="color: #ADB5BD;">暂无图像</span>
             </div>
-            ''', unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
-    with col_info:
-        try:
-            esi_val = egg_row.get('Static_ShapeIndex_机器视觉ESI', 0)
-            asym_val = egg_row.get('Static_AsymmetryIndex_不对称指数', 0)
-            ecc_val = egg_row.get('Static_Eccentricity_离心率', 0)
-            circ_val = egg_row.get('Static_Circularity_圆形度', 0)
-        except Exception:
-            esi_val = asym_val = ecc_val = circ_val = 0
+        img_path = get_egg_image_path(selected_egg)
+        if os.path.exists(img_path):
+            st.image(img_path, caption=f"标本 {selected_egg} 号 — 提取几何轮廓", use_container_width=True)
+        else:
+            st.info("标本轮廓图像加载中")
 
-        risk_color_map = {1: '#4ECDC4', 2: '#FFE66D', 3: '#FF6B6B'}
-        risk_label_map = {1: '低风险', 2: '中风险', 3: '高风险'}
-        risk_color = risk_color_map.get(rsi_group, '#ADB5BD')
-        risk_label = risk_label_map.get(rsi_group, '未知')
-
-        st.markdown(f'''
-        <div class="card">
-            <div style="color: #00B4D8; font-size: 1.3rem; font-weight: 600; margin-bottom: 1rem;">{selected_egg}号鸡蛋</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem;">
-                <div><span style="color: #ADB5BD;">试验次数:</span><br><span style="color: white; font-size: 1.2rem;">{len(egg_data)} 次</span></div>
-                <div><span style="color: #ADB5BD;">风险等级:</span><br><span style="color: {risk_color}; font-size: 1.2rem;">{risk_label}</span></div>
-                <div><span style="color: #ADB5BD;">蛋形指数 (ESI):</span><br><span style="color: white; font-size: 1.2rem;">{esi_val:.4f}</span></div>
-                <div><span style="color: #ADB5BD;">不对称指数:</span><br><span style="color: white; font-size: 1.2rem;">{asym_val:.4f}</span></div>
-                <div><span style="color: #ADB5BD;">离心率:</span><br><span style="color: white; font-size: 1.2rem;">{ecc_val:.4f}</span></div>
-                <div><span style="color: #ADB5BD;">圆形度:</span><br><span style="color: white; font-size: 1.2rem;">{circ_val:.4f}</span></div>
+        st.markdown(f"""
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 0.8rem;">
+                <div style="background: rgba(255,255,255,0.03); padding: 0.5rem 0.7rem; border-radius: 8px;">
+                    <div style="font-size: 0.7rem; color: #64748B;">蛋形指数 (ESI)</div>
+                    <div style="font-weight: 700; color: #00E5FF; font-family: var(--font-mono); font-size: 1.05rem;">
+                        {egg_row.get('Static_ShapeIndex_机器视觉ESI', 0):.4f}
+                    </div>
+                </div>
+                <div style="background: rgba(255,255,255,0.03); padding: 0.5rem 0.7rem; border-radius: 8px;">
+                    <div style="font-size: 0.7rem; color: #64748B;">不对称指数</div>
+                    <div style="font-weight: 700; color: #FFFFFF; font-family: var(--font-mono); font-size: 1.05rem;">
+                        {egg_row.get('Static_AsymmetryIndex_不对称指数', 0):.4f}
+                    </div>
+                </div>
+                <div style="background: rgba(255,255,255,0.03); padding: 0.5rem 0.7rem; border-radius: 8px;">
+                    <div style="font-size: 0.7rem; color: #64748B;">离心率</div>
+                    <div style="font-weight: 700; color: #FFFFFF; font-family: var(--font-mono); font-size: 1.05rem;">
+                        {egg_row.get('Static_Eccentricity_离心率', 0):.4f}
+                    </div>
+                </div>
+                <div style="background: rgba(255,255,255,0.03); padding: 0.5rem 0.7rem; border-radius: 8px;">
+                    <div style="font-size: 0.7rem; color: #64748B;">圆形度</div>
+                    <div style="font-weight: 700; color: #FFFFFF; font-family: var(--font-mono); font-size: 1.05rem;">
+                        {egg_row.get('Static_Circularity_圆形度', 0):.4f}
+                    </div>
+                </div>
             </div>
         </div>
-        ''', unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
-    feat_tab, model_tab = st.tabs(["📊 特征雷达图", "📉 模型对比"])
+    with right_col:
+        sub_tab1, sub_tab2 = st.tabs([
+            "📡 标本多维几何雷达图 (Radar Profile)",
+            "🏆 机器学习模型基准比武 (ML Benchmark & Importance)"
+        ])
 
-    with feat_tab:
-        features = ['Static_ShapeIndex_机器视觉ESI', 'Static_AsymmetryIndex_不对称指数',
-                    'Static_Eccentricity_离心率', 'Static_Circularity_圆形度',
-                    'Static_Solidity_坚实度', 'Static_Extent_延展度']
-        labels_cn = ['蛋形指数', '不对称指数', '离心率', '圆形度', '坚实度', '延展度']
+        with sub_tab1:
+            _render_cyber_radar(egg_row, df)
 
-        try:
-            norm_vals = []
-            for col in features:
-                col_min = df[col].min()
-                col_max = df[col].max()
-                val = egg_row[col]
-                norm_val = (val - col_min) / (col_max - col_min) if col_max > col_min else 0.5
-                norm_vals.append(norm_val)
+        with sub_tab2:
+            _render_model_benchmarks()
 
-            fig_radar = go.Figure()
-            fig_radar.add_trace(go.Scatterpolar(
-                r=norm_vals + [norm_vals[0]],
-                theta=labels_cn + [labels_cn[0]],
-                fill='toself',
-                name=f'{selected_egg}号鸡蛋',
-                line=dict(color='#00B4D8', width=2),
-                fillcolor='rgba(0, 180, 216, 0.2)'
-            ))
-            fig_radar.update_layout(
-                polar=dict(
-                    bgcolor='#1A1C23',
-                    radialaxis=dict(visible=True, range=[0, 1], color='#ADB5BD',
-                                    gridcolor='#2D2D3D'),
-                    angularaxis=dict(color='#ADB5BD', gridcolor='#2D2D3D')
-                ),
-                showlegend=True,
-                legend=dict(font=dict(color='white')),
+
+def _render_cyber_radar(egg_row, full_df):
+    """绘制高科技暗色雷达图"""
+    radar_features = [
+        ('Static_ShapeIndex_机器视觉ESI', '蛋形指数(ESI)'),
+        ('Static_AsymmetryIndex_不对称指数', '不对称性'),
+        ('Static_Eccentricity_离心率', '离心率'),
+        ('Static_Circularity_圆形度', '圆形度'),
+        ('Static_Solidity_坚实度', '坚实度'),
+        ('Static_Extent_延展度', '延展度'),
+    ]
+
+    labels = []
+    norm_vals = []
+    for col, label in radar_features:
+        labels.append(label)
+        val = egg_row.get(col, 0)
+        c_min = full_df[col].min() if col in full_df.columns else 0
+        c_max = full_df[col].max() if col in full_df.columns else 1
+        if c_max > c_min:
+            n_val = (val - c_min) / (c_max - c_min)
+        else:
+            n_val = 0.5
+        norm_vals.append(max(0.0, min(1.0, float(n_val))))
+
+    # 闭合雷达图
+    labels.append(labels[0])
+    norm_vals.append(norm_vals[0])
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(
+        r=norm_vals,
+        theta=labels,
+        fill='toself',
+        fillcolor='rgba(0, 229, 255, 0.22)',
+        line=dict(color='#00E5FF', width=2.5),
+        marker=dict(color='#00E5FF', size=7, symbol='diamond'),
+        name=f"标本 {egg_row.get('egg_id', '')} 号"
+    ))
+
+    fig.update_layout(
+        polar=dict(
+            bgcolor='rgba(14, 20, 35, 0.5)',
+            radialaxis=dict(
+                visible=True,
+                range=[0, 1],
+                color='#64748B',
+                gridcolor='rgba(255, 255, 255, 0.08)',
+                tickfont=dict(size=9, color='#64748B')
+            ),
+            angularaxis=dict(
+                color='#E2E8F0',
+                gridcolor='rgba(255, 255, 255, 0.08)',
+                tickfont=dict(size=11, color='#E2E8F0', family='Inter, sans-serif')
+            )
+        ),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        height=360,
+        margin=dict(l=40, r=40, t=20, b=20),
+        showlegend=False
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def _render_model_benchmarks():
+    """渲染多模型准确率柱状图与特征重要性对比"""
+    metrics_df = load_model_metrics()
+    if metrics_df is not None and not metrics_df.empty:
+        col_m1, col_m2 = st.columns([1.2, 1])
+        with col_m1:
+            st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#94A3B8;margin-bottom:0.3rem;'>四模型核心分类效能对比</div>", unsafe_allow_html=True)
+            models = metrics_df['ModelName'].tolist()
+            fig = go.Figure()
+
+            metric_configs = [
+                ('Accuracy', '#00E5FF', '准确率'),
+                ('Macro_F1', '#A78BFA', '宏平均 F1'),
+                ('Macro_AUC', '#10B981', '宏平均 AUC'),
+            ]
+            for m_key, color, label in metric_configs:
+                if m_key in metrics_df.columns:
+                    vals = metrics_df[m_key].tolist()
+                    fig.add_trace(go.Bar(
+                        name=label,
+                        x=models,
+                        y=vals,
+                        marker=dict(color=color, cornerradius=4),
+                        text=[f"{v:.1%}" for v in vals],
+                        textposition='outside',
+                        textfont=dict(color='#E2E8F0', size=10)
+                    ))
+
+            fig.update_layout(
+                barmode='group',
+                height=300,
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
-                margin=dict(l=80, r=80, t=30, b=30),
-                height=450,
+                legend=dict(orientation="h", y=1.2, font=dict(color='#E2E8F0', size=10)),
+                xaxis=dict(tickfont=dict(color='#E2E8F0'), gridcolor='rgba(255,255,255,0.05)'),
+                yaxis=dict(range=[0, 1.1], tickformat='.0%', tickfont=dict(color='#64748B'), gridcolor='rgba(255,255,255,0.05)'),
+                margin=dict(l=10, r=10, t=30, b=20)
             )
-            st.plotly_chart(fig_radar, use_container_width=True)
-        except Exception:
-            st.error("雷达图渲染失败，请检查数据完整性")
+            st.plotly_chart(fig, use_container_width=True)
 
-        with st.expander("查看详细特征数据"):
-            try:
-                feat_data = {label: egg_row[col] for col, label in zip(features, labels_cn)}
-                st.table(pd.DataFrame([feat_data]))
-            except Exception:
-                st.info("特征数据暂不可用")
+        with col_m2:
+            st.markdown("<div style='font-size:0.85rem;font-weight:600;color:#94A3B8;margin-bottom:0.3rem;'>Top 8 驱动特征重要性 (RF vs GBDT)</div>", unsafe_allow_html=True)
+            imp_df = load_feature_importance()
+            if isinstance(imp_df, pd.DataFrame) and 'RF_Importance' in imp_df.columns:
+                top8 = imp_df.head(8)
+                names = top8['ShortName'].tolist()
+                rf_v = top8['RF_Importance'].tolist()
+                gb_v = top8['GBDT_Importance'].tolist()
 
-    with model_tab:
-        try:
-            metrics_df = load_model_metrics()
-            if metrics_df is not None and 'ModelName' in metrics_df.columns:
-                metrics_df = metrics_df.dropna(subset=['ModelName'])
-                metrics_df = metrics_df[metrics_df['ModelName'].str.strip() != '']
-
-                col1, col2 = st.columns([1.5, 1])
-
-                with col1:
-                    model_names = metrics_df['ModelName'].tolist()
-                    fig_bar = go.Figure()
-                    for metric, color, label in [
-                        ('Accuracy', '#4ECDC4', '准确率'),
-                        ('Macro_F1', '#FFE66D', '宏平均F1'),
-                        ('Macro_AUC', '#FF6B6B', '宏平均AUC')
-                    ]:
-                        if metric not in metrics_df.columns:
-                            continue
-                        vals = pd.to_numeric(metrics_df[metric], errors='coerce').fillna(0)
-                        fig_bar.add_trace(go.Bar(
-                            name=label,
-                            x=model_names,
-                            y=vals,
-                            marker_color=color,
-                            text=vals.round(3),
-                            textposition='auto',
-                        ))
-                    fig_bar.update_layout(
-                        barmode='group',
-                        title=dict(text='四模型性能对比', font=dict(color='#ADB5BD', size=14)),
-                        xaxis=dict(title='模型', tickfont=dict(color='#ADB5BD'), gridcolor='#2D2D3D'),
-                        yaxis=dict(title='得分', range=[0, 1], tickfont=dict(color='#ADB5BD'),
-                                   gridcolor='#2D2D3D'),
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        legend=dict(font=dict(color='white')),
-                        height=400,
-                    )
-                    st.plotly_chart(fig_bar, use_container_width=True)
-
-                with col2:
-                    try:
-                        imp_df = load_feature_importance()
-                        if isinstance(imp_df, tuple):
-                            imp_df = imp_df[0] if imp_df[0] is not None else imp_df[1]
-                        if imp_df is not None and len(imp_df) > 0:
-                            # 使用 ShortName 作为标签，取 Top 10
-                            imp_top = imp_df.head(10).copy()
-                            y_labels = imp_top['ShortName'].tolist()
-
-                            fig_imp = go.Figure()
-                            # RF 重要性（青色）
-                            fig_imp.add_trace(go.Bar(
-                                x=pd.to_numeric(imp_top['RF_Importance'], errors='coerce').fillna(0),
-                                y=y_labels,
-                                name='随机森林 (RF)',
-                                orientation='h',
-                                marker_color='#00B4D8',
-                                text=imp_top['RF_Importance'].round(3),
-                                textposition='outside',
-                            ))
-                            # GBDT 重要性（暖金色）
-                            fig_imp.add_trace(go.Bar(
-                                x=pd.to_numeric(imp_top['GBDT_Importance'], errors='coerce').fillna(0),
-                                y=y_labels,
-                                name='梯度提升树 (GBDT)',
-                                orientation='h',
-                                marker_color='#FFB347',
-                                text=imp_top['GBDT_Importance'].round(3),
-                                textposition='outside',
-                            ))
-                            fig_imp.update_layout(
-                                title=dict(text='特征重要性对比 (Top 10)', font=dict(color='#ADB5BD', size=14)),
-                                xaxis=dict(title='重要性', tickfont=dict(color='#ADB5BD'), gridcolor='#2D2D3D'),
-                                yaxis=dict(tickfont=dict(color='#ADB5BD'), gridcolor='#2D2D3D'),
-                                paper_bgcolor='rgba(0,0,0,0)',
-                                plot_bgcolor='rgba(0,0,0,0)',
-                                legend=dict(font=dict(color='white'), orientation='h', y=1.1),
-                                height=420,
-                                margin=dict(l=130, r=40, t=50, b=30),
-                                barmode='group',
-                            )
-                            st.plotly_chart(fig_imp, use_container_width=True)
-                        else:
-                            st.info("特征重要性数据暂不可用")
-                    except Exception as e:
-                        st.info(f"特征重要性数据暂不可用")
+                fig_imp = go.Figure()
+                fig_imp.add_trace(go.Bar(
+                    y=names, x=rf_v, name='随机森林 (RF)',
+                    orientation='h', marker_color='#00E5FF'
+                ))
+                fig_imp.add_trace(go.Bar(
+                    y=names, x=gb_v, name='梯度提升 (GBDT)',
+                    orientation='h', marker_color='#F59E0B'
+                ))
+                fig_imp.update_layout(
+                    barmode='group',
+                    height=300,
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    legend=dict(orientation="h", y=1.2, font=dict(color='#E2E8F0', size=9)),
+                    xaxis=dict(tickformat='.0%', tickfont=dict(color='#64748B'), gridcolor='rgba(255,255,255,0.05)'),
+                    yaxis=dict(tickfont=dict(color='#E2E8F0', size=10), categoryorder='total ascending'),
+                    margin=dict(l=10, r=10, t=30, b=20)
+                )
+                st.plotly_chart(fig_imp, use_container_width=True)
             else:
-                st.info("模型对比数据未找到，请确保数据文件存在且包含 ModelName 列。")
-                if metrics_df is not None:
-                    with st.expander("查看原始数据表格"):
-                        st.dataframe(metrics_df)
-        except Exception as e:
-            st.error(f"模型对比加载失败: {str(e)}")
+                st.info("特征重要性比对数据载入中")
+    else:
+        st.info("模型基准指标暂不可用")
