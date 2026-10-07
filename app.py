@@ -1,63 +1,58 @@
+"""
+鸡蛋滚落稳定性分析系统 - 主入口
+西南大学大学生创新创业训练计划项目 (S202510635378)
+"""
+import os
 import streamlit as st
 
 st.set_page_config(
-    page_title="鸡蛋滚落稳定性分析系统",
+    page_title="鸡蛋滚落稳定性分析系统 | Egg RSI Analyzer",
     page_icon="🥚",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# ═══════════════════════════════════════════════════════════════════════
+# 顶级科技感暗黑工业设计系统 (Cyber-Sci Deep UI System)
+# ═══════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-    /* ═══════ DARK BASE ═══════ */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+    :root {
+        --bg-deep: #07090E;
+        --bg-surface: #0E131F;
+        --bg-surface-elevated: #141B2D;
+        --bg-card: rgba(16, 23, 41, 0.75);
+        --bg-card-hover: rgba(22, 32, 56, 0.88);
+        --border-subtle: rgba(255, 255, 255, 0.07);
+        --border-active: rgba(0, 229, 255, 0.35);
+        --cyan-primary: #00E5FF;
+        --cyan-glow: rgba(0, 229, 255, 0.25);
+        --blue-tech: #0077B6;
+        --purple-neon: #8B5CF6;
+        --purple-glow: rgba(139, 92, 246, 0.25);
+        --green-safe: #10B981;
+        --amber-warn: #F59E0B;
+        --red-danger: #EF4444;
+        --text-primary: #F8FAFC;
+        --text-secondary: #94A3B8;
+        --text-muted: #64748B;
+        --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+        --font-mono: 'JetBrains Mono', Consolas, monospace;
+        --font-display: 'Space Grotesk', 'Inter', sans-serif;
+    }
+
+    /* ══════ 全局重置与基础背景 ══════ */
     .stApp {
-        background: #0A0D14;
-        font-family: 'Segoe UI', system-ui, sans-serif;
+        background-color: var(--bg-deep);
+        font-family: var(--font-sans);
+        color: var(--text-primary);
+        overflow-x: hidden;
     }
 
-    /* ─── Hexagonal grid overlay (sci-fi tech, non-blocking) ─── */
+    /* 科技感动态环境光背景 */
     .stApp::before {
-        content: '';
-        position: fixed;
-        top: 0; left: 0;
-        width: 100vw; height: 100vh;
-        background-image:
-            /* Horizontal lines */
-            linear-gradient(60deg, rgba(0, 180, 216, 0.025) 0%, transparent 0.5px),
-            linear-gradient(-60deg, rgba(0, 180, 216, 0.025) 0%, transparent 0.5px),
-            linear-gradient(0deg, rgba(0, 180, 216, 0.015) 0%, transparent 0.5px);
-        background-size: 50px 86.6px;
-        background-position: 25px 43.3px;
-        pointer-events: none;
-        z-index: 0;
-        animation: hexPulse 8s ease-in-out infinite;
-    }
-    @keyframes hexPulse {
-        0% { opacity: 0.5; }
-        50% { opacity: 1; }
-        100% { opacity: 0.5; }
-    }
-
-    /* ─── Circuit board traces (subtle decorative) ─── */
-    .circuit-bg {
-        position: fixed;
-        top: 0; left: 0;
-        width: 100vw; height: 100vh;
-        pointer-events: none;
-        z-index: 0;
-        opacity: 0.035;
-        background-image:
-            /* Dot matrix nodes */
-            radial-gradient(circle, #00B4D8 1px, transparent 1px),
-            /* Horizontal traces */
-            repeating-linear-gradient(90deg, transparent, transparent 80px, rgba(0, 180, 216, 0.3) 80px, rgba(0, 180, 216, 0.3) 81px),
-            /* Vertical traces */
-            repeating-linear-gradient(0deg, transparent, transparent 80px, rgba(0, 180, 216, 0.3) 80px, rgba(0, 180, 216, 0.3) 81px);
-        background-size: 80px 80px, 160px 160px, 160px 160px;
-    }
-
-    /* ─── Floating glow orbs ─── */
-    .stApp::after {
         content: '';
         position: fixed;
         top: 0; left: 0;
@@ -65,536 +60,544 @@ st.markdown("""
         pointer-events: none;
         z-index: 0;
         background:
-            radial-gradient(ellipse 600px 400px at 15% 25%, rgba(0, 180, 216, 0.06) 0%, transparent 70%),
-            radial-gradient(ellipse 500px 500px at 75% 60%, rgba(124, 58, 237, 0.05) 0%, transparent 70%),
-            radial-gradient(ellipse 300px 300px at 90% 15%, rgba(0, 180, 216, 0.04) 0%, transparent 70%);
-        animation: orbFloat 12s ease-in-out infinite alternate;
-    }
-    @keyframes orbFloat {
-        0% { opacity: 0.6; transform: scale(1); }
-        100% { opacity: 1; transform: scale(1.05); }
+            radial-gradient(ellipse 900px 550px at 10% 15%, rgba(0, 229, 255, 0.055) 0%, transparent 70%),
+            radial-gradient(ellipse 800px 600px at 85% 65%, rgba(139, 92, 246, 0.05) 0%, transparent 70%),
+            radial-gradient(ellipse 600px 450px at 50% 90%, rgba(0, 119, 182, 0.04) 0%, transparent 65%);
     }
 
-    /* ─── Blocking fix: content above background ─── */
+    /* 微妙的科技点阵背景 */
+    .stApp::after {
+        content: '';
+        position: fixed;
+        top: 0; left: 0;
+        width: 100vw; height: 100vh;
+        pointer-events: none;
+        z-index: 0;
+        background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+        background-size: 32px 32px;
+        opacity: 0.6;
+    }
+
     .main > div {
         position: relative;
         z-index: 1;
-    }
-    section[data-testid="stSidebar"] {
-        position: relative;
-        z-index: 2;
+        padding-top: 1rem;
     }
 
-    /* ─── Scan line (subtle, overlay-not-blocking) ─── */
-    @keyframes scanLine {
-        0% { top: -2px; opacity: 0; }
-        10% { opacity: 0.15; }
-        90% { opacity: 0.15; }
-        100% { top: 100%; opacity: 0; }
-    }
-    .scan-line {
-        position: fixed;
-        left: 0;
-        width: 100%;
-        height: 2px;
-        background: linear-gradient(90deg, transparent, rgba(0, 180, 216, 0.3), transparent);
-        z-index: 9999;
-        pointer-events: none;
-        animation: scanLine 4s ease-in-out infinite;
-    }
-
-    div[data-testid="stSidebarNav"] { display: none; }
+    /* 隐藏多余默认组件 */
+    div[data-testid="stSidebarNav"] { display: none !important; }
     footer { display: none !important; }
     #MainMenu { display: none !important; }
-    /* Hide ALL Streamlit Cloud branding / deploy / fork badges */
     [data-testid="stDeployButton"] { display: none !important; }
     [data-testid="stToolbar"] { display: none !important; }
     [data-testid="stToolbarActions"] { display: none !important; }
     [data-testid="stStatusWidget"] { display: none !important; }
     [data-testid="stAppDeployButton"] { display: none !important; }
     button[kind="headerNoPadding"] { display: none !important; }
-    header[data-testid="stHeader"] { display: none !important; }
+    header[data-testid="stHeader"] { background: transparent !important; }
 
-    /* ═══════ HEADER = shimmer + glow ═══════ */
-    .main-header {
-        text-align: center;
-        padding: 1.2rem 0 0.8rem;
-        font-size: 2.4rem;
-        font-weight: 800;
-        letter-spacing: 2px;
-        background: linear-gradient(135deg, #00B4D8 0%, #48CAE4 20%, #7C3AED 50%, #00B4D8 80%, #48CAE4 100%);
-        background-size: 300% auto;
+    /* ══════ 自定义科技滚动条 ══════ */
+    ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+        background: var(--bg-deep);
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #1E293B;
+        border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--cyan-primary);
+    }
+
+    /* ══════ 顶部系统看板标头 ══════ */
+    .app-header-container {
+        position: relative;
+        padding: 1.5rem 1.8rem;
+        margin-bottom: 1.8rem;
+        background: linear-gradient(135deg, rgba(14, 20, 35, 0.85) 0%, rgba(20, 27, 48, 0.65) 100%);
+        border: 1px solid var(--border-subtle);
+        border-radius: 16px;
+        backdrop-filter: blur(20px);
+        box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+    }
+    .app-header-container::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, var(--cyan-primary), var(--purple-neon), transparent);
+    }
+    .app-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    .app-branding {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    .app-logo-box {
+        width: 52px;
+        height: 52px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, rgba(0, 229, 255, 0.15), rgba(139, 92, 246, 0.15));
+        border: 1px solid rgba(0, 229, 255, 0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8rem;
+        box-shadow: 0 0 20px rgba(0, 229, 255, 0.2);
+    }
+    .app-title-text {
+        font-family: var(--font-display);
+        font-size: 1.75rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        background: linear-gradient(120deg, #FFFFFF 30%, #A5F3FC 70%, #E0E7FF 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        background-clip: text;
-        animation: headerShimmer 6s ease-in-out infinite;
-        position: relative;
-        z-index: 1;
-        filter: drop-shadow(0 0 20px rgba(0, 180, 216, 0.3));
-    }
-    .main-header::after {
-        content: '';
-        display: block;
-        width: 120px;
-        height: 3px;
-        margin: 8px auto 0;
-        background: linear-gradient(90deg, transparent, #00B4D8, #7C3AED, transparent);
-        border-radius: 2px;
-        animation: headerShimmer 3s ease-in-out infinite;
-    }
-    @keyframes headerShimmer {
-        0% { background-position: 0% center; }
-        50% { background-position: 100% center; }
-        100% { background-position: 0% center; }
-    }
-
-    /* ─── Section headers with animated underline ─── */
-    .section-header {
-        color: #FFFFFF;
-        font-size: 1.4rem;
-        font-weight: 700;
-        padding: 0.5rem 1rem;
-        margin: 1rem 0;
-        border-left: 3px solid #00B4D8;
-        background: linear-gradient(90deg, rgba(0, 180, 216, 0.08), transparent);
-    }
-
-    /* ═══════ CARDS = hover glow + entrance animation + Tron corners ═══════ */
-    .card {
-        background: #12141E;
-        border: 1px solid #2A2D3E;
-        border-radius: 12px;
-        padding: 1.25rem;
-        margin: 0.75rem 0;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        position: relative;
-        z-index: 1;
-        overflow: hidden;
-        animation: cardFadeIn 0.6s ease-out both;
-    }
-    /* Tron corner brackets */
-    .card::before {
-        content: '';
-        position: absolute;
-        top: -1px; left: -1px;
-        width: 24px; height: 24px;
-        border-top: 2px solid rgba(0, 180, 216, 0.3);
-        border-left: 2px solid rgba(0, 180, 216, 0.3);
-        border-radius: 12px 0 0 0;
-        transition: all 0.4s ease;
-        pointer-events: none;
-    }
-    .card::after {
-        content: '';
-        position: absolute;
-        bottom: -1px; right: -1px;
-        width: 24px; height: 24px;
-        border-bottom: 2px solid rgba(0, 180, 216, 0.3);
-        border-right: 2px solid rgba(0, 180, 216, 0.3);
-        border-radius: 0 0 12px 0;
-        transition: all 0.4s ease;
-        pointer-events: none;
-    }
-    .card:nth-child(1) { animation-delay: 0.05s; }
-    .card:nth-child(2) { animation-delay: 0.1s; }
-    .card:nth-child(3) { animation-delay: 0.15s; }
-    .card:nth-child(4) { animation-delay: 0.2s; }
-
-    @keyframes cardFadeIn {
-        from { opacity: 0; transform: translateY(12px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-
-    .card:hover {
-        border-color: #00B4D8;
-        box-shadow:
-            0 0 15px rgba(0, 180, 216, 0.12),
-            0 0 30px rgba(0, 180, 216, 0.06),
-            inset 0 0 15px rgba(0, 180, 216, 0.03);
-        transform: translateY(-2px);
-    }
-    .card:hover::before {
-        width: 36px; height: 36px;
-        border-color: #00B4D8;
-    }
-    .card:hover::after {
-        width: 36px; height: 36px;
-        border-color: #00B4D8;
-    }
-
-    /* ─── Metric cards with top glow bar ─── */
-    .metric-card {
-        background: #12141E;
-        border: 1px solid #2A2D3E;
-        border-radius: 10px;
-        padding: 1rem 1.25rem;
-        text-align: center;
-        transition: all 0.3s ease;
-        position: relative;
-        z-index: 1;
-        overflow: hidden;
-        animation: cardFadeIn 0.5s ease-out both;
-    }
-    .metric-card::before {
-        content: '';
-        position: absolute;
-        top: 0; left: 25%; right: 25%;
-        height: 2px;
-        background: linear-gradient(90deg, transparent, #00B4D8, transparent);
-        opacity: 0;
-        transition: all 0.3s ease;
-    }
-    .metric-card:hover::before {
-        opacity: 1;
-        left: 10%; right: 10%;
-    }
-    .metric-card:hover {
-        border-color: #00B4D8;
-        box-shadow: 0 0 12px rgba(0, 180, 216, 0.1);
-        transform: translateY(-1px);
-    }
-    .metric-value {
-        color: #00B4D8;
-        font-size: 1.6rem;
-        font-weight: 700;
         line-height: 1.2;
     }
-    .metric-label {
-        color: #8A8FA6;
-        font-size: 0.8rem;
+    .app-subtitle-text {
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+        font-weight: 400;
+        margin-top: 0.25rem;
+        letter-spacing: 0.02em;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .app-status-badges {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    .header-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.35rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
         font-weight: 500;
-        margin-top: 0.2rem;
+        background: rgba(15, 23, 42, 0.8);
+        border: 1px solid var(--border-subtle);
+        color: var(--text-secondary);
+    }
+    .header-badge.highlight {
+        background: rgba(0, 229, 255, 0.08);
+        border-color: rgba(0, 229, 255, 0.3);
+        color: var(--cyan-primary);
+    }
+    .status-pulse {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: var(--green-safe);
+        box-shadow: 0 0 8px var(--green-safe);
+        display: inline-block;
+        animation: pulseAnimation 2s infinite;
+    }
+    @keyframes pulseAnimation {
+        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+        70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
     }
 
-    /* ─── Info/warning/error boxes ─── */
-    .info-box {
-        background: #12141E;
-        border-left: 4px solid #00B4D8;
-        border-radius: 0 8px 8px 0;
-        padding: 1rem 1.25rem;
-        margin: 1rem 0;
-        font-size: 0.9rem;
-        color: #CCC;
+    /* ══════ 顶部系统快速信息条 ══════ */
+    .system-metrics-ribbon {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 0.85rem;
+        margin-top: 1.2rem;
+        padding-top: 1rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .ribbon-item {
+        background: rgba(10, 15, 26, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        border-radius: 10px;
+        padding: 0.65rem 0.9rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    .ribbon-icon {
+        font-size: 1.25rem;
+        opacity: 0.9;
+    }
+    .ribbon-label {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .ribbon-value {
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        font-family: var(--font-mono);
+    }
+
+    /* ══════ 玻璃拟态卡片 ══════ */
+    .sci-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: 14px;
+        padding: 1.3rem;
+        margin-bottom: 1rem;
+        backdrop-filter: blur(16px);
+        box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.4);
+        transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         position: relative;
-        z-index: 1;
+        overflow: hidden;
     }
-    .warning-box {
-        background: #12141E;
-        border-left: 4px solid #F59E0B;
-        border-radius: 0 8px 8px 0;
-        padding: 1rem;
-        margin: 1rem 0;
+    .sci-card:hover {
+        background: var(--bg-card-hover);
+        border-color: rgba(0, 229, 255, 0.3);
+        box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.5), 0 0 20px -6px var(--cyan-glow);
+        transform: translateY(-2px);
     }
-    .error-box {
-        background: #12141E;
-        border-left: 4px solid #EF4444;
-        border-radius: 0 8px 8px 0;
-        padding: 1rem;
-        margin: 1rem 0;
-    }
-
-    /* ─── Accent bar ─── */
-    .accent-bar {
-        height: 3px;
-        background: linear-gradient(90deg, #00B4D8, #7C3AED, #00B4D8);
-        background-size: 200% auto;
-        border-radius: 2px;
-        margin: 1rem 0;
-        animation: headerShimmer 3s ease-in-out infinite;
+    .sci-card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0;
+        width: 100%; height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
     }
 
-    /* ═══════ TABS ═══════ */
+    /* ══════ 高级工业视觉相框 ══════ */
+    div[data-testid="stImage"] {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    div[data-testid="stImage"] img {
+        border-radius: 12px !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        background: #0B0F19 !important;
+        box-shadow: 0 6px 20px -4px rgba(0, 0, 0, 0.6) !important;
+        transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.25s ease !important;
+        max-height: 380px !important;
+        object-fit: contain !important;
+    }
+    div[data-testid="stImage"] img:hover {
+        transform: translateY(-2px) scale(1.015) !important;
+        border-color: rgba(0, 229, 255, 0.45) !important;
+        box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.8), 0 0 20px -4px rgba(0, 229, 255, 0.3) !important;
+    }
+    div[data-testid="stImage"] [data-testid="stCaptionContainer"] {
+        text-align: center;
+        color: #94A3B8 !important;
+        font-size: 0.78rem !important;
+        margin-top: 0.4rem !important;
+    }
+
+    /* ══════ 区域标头 ══════ */
+    .section-title {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-family: var(--font-display);
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #FFFFFF;
+        margin: 1.2rem 0 0.8rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .section-title-icon {
+        color: var(--cyan-primary);
+        font-size: 1.2rem;
+    }
+
+    /* ══════ TAB 标签页美化 (Pill Switcher) ══════ */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 6px;
-        background: #12141E;
-        padding: 6px 10px;
-        border-radius: 12px;
-        border: 1px solid #2A2D3E;
+        gap: 8px;
+        background: rgba(14, 20, 35, 0.9);
+        padding: 6px;
+        border-radius: 14px;
+        border: 1px solid var(--border-subtle);
+        margin-bottom: 1.4rem;
+        backdrop-filter: blur(12px);
     }
     .stTabs [data-baseweb="tab"] {
         background: transparent;
-        color: #8A8FA6;
+        color: var(--text-secondary);
         font-weight: 500;
-        padding: 0.4rem 0.9rem;
-        border-radius: 8px;
-        transition: all 0.2s ease;
+        font-size: 0.95rem;
+        padding: 0.6rem 1.4rem;
+        border-radius: 10px;
+        transition: all 0.25s ease;
+        border: 1px solid transparent;
     }
     .stTabs [data-baseweb="tab"]:hover {
-        background: rgba(0, 180, 216, 0.1);
         color: #FFFFFF;
+        background: rgba(255, 255, 255, 0.04);
     }
     .stTabs [aria-selected="true"] {
-        background: #00B4D8 !important;
+        background: linear-gradient(135deg, rgba(0, 229, 255, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%) !important;
+        border: 1px solid rgba(0, 229, 255, 0.45) !important;
         color: #FFFFFF !important;
         font-weight: 600;
-        box-shadow: 0 0 12px rgba(0, 180, 216, 0.3);
+        box-shadow: 0 4px 20px rgba(0, 229, 255, 0.2);
     }
 
-    /* ═══════ METRIC WIDGET ═══════ */
-    div[data-testid="stMetric"] {
-        background: #12141E;
-        border: 1px solid #2A2D3E;
-        border-radius: 10px;
-        padding: 0.8rem 1rem;
-    }
-    div[data-testid="stMetric"] label {
-        color: #8A8FA6;
-        font-size: 0.75rem;
-    }
-    div[data-testid="stMetric"] span {
-        color: #00B4D8;
-    }
-
-    /* ═══════ SIDEBAR ═══════ */
+    /* ══════ 侧边栏深度重塑 ══════ */
     section[data-testid="stSidebar"] {
-        background: #0D0F17;
-        border-right: 1px solid #1A1D2E;
+        background-color: #0A0D15 !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.07) !important;
     }
-    section[data-testid="stSidebar"] .sidebar-content {
-        padding: 1rem 0.5rem;
+    section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+        padding: 1.5rem 1rem;
     }
-    .sidebar-section {
-        color: #8A8FA6;
-        font-size: 0.8rem;
-        margin: 1rem 0;
+    .sidebar-brand-card {
+        background: linear-gradient(135deg, rgba(16, 23, 42, 0.8) 0%, rgba(10, 15, 26, 0.9) 100%);
+        border: 1px solid var(--border-subtle);
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 1.2rem;
+        text-align: center;
     }
-    .sidebar-value {
-        color: #00B4D8;
-        font-weight: 600;
+    .sidebar-brand-title {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: #FFFFFF;
+        margin-top: 0.4rem;
+    }
+    .sidebar-brand-sub {
+        font-size: 0.75rem;
+        color: var(--text-muted);
     }
 
-    /* ═══════ BUTTONS ═══════ */
-    div[data-testid="stButton"] button {
+    /* 侧边栏图片优雅化容器 */
+    .sidebar-img-card {
+        background: rgba(14, 20, 35, 0.6);
+        border: 1px solid var(--border-subtle);
+        border-radius: 10px;
+        padding: 0.5rem;
+        margin: 0.8rem 0;
         transition: all 0.3s ease;
-        border: 1px solid #00B4D8 !important;
-        color: #00B4D8 !important;
-        background: transparent !important;
+    }
+    .sidebar-img-card:hover {
+        border-color: rgba(0, 229, 255, 0.35);
+        box-shadow: 0 0 16px rgba(0, 229, 255, 0.15);
+    }
+
+    /* ══════ 按钮科技感 ══════ */
+    div[data-testid="stButton"] button {
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        padding: 0.55rem 1.2rem !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        background: rgba(16, 23, 42, 0.7) !important;
+        color: var(--text-primary) !important;
     }
     div[data-testid="stButton"] button:hover {
-        box-shadow: 0 0 15px rgba(0, 180, 216, 0.3);
+        border-color: var(--cyan-primary) !important;
+        color: #FFFFFF !important;
+        background: rgba(0, 229, 255, 0.1) !important;
+        box-shadow: 0 0 15px rgba(0, 229, 255, 0.25) !important;
         transform: translateY(-1px);
-        background: rgba(0, 180, 216, 0.08) !important;
     }
     div[data-testid="stButton"] button[kind="primary"] {
-        background: linear-gradient(135deg, #0098b8, #00B4D8) !important;
-        border: none !important;
+        background: linear-gradient(135deg, #00B4D8 0%, #0077B6 100%) !important;
+        border: 1px solid rgba(0, 229, 255, 0.5) !important;
         color: #FFFFFF !important;
-        font-weight: 600;
-        letter-spacing: 0.5px;
+        box-shadow: 0 4px 20px rgba(0, 180, 216, 0.3) !important;
     }
     div[data-testid="stButton"] button[kind="primary"]:hover {
-        box-shadow: 0 0 25px rgba(0, 180, 216, 0.4), 0 0 50px rgba(0, 180, 216, 0.1);
+        background: linear-gradient(135deg, #00C8E5 0%, #0096C7 100%) !important;
+        box-shadow: 0 6px 25px rgba(0, 229, 255, 0.5) !important;
         transform: translateY(-2px);
     }
 
-    /* ═══════ PROGRESS BAR ═══════ */
-    div[data-testid="stProgress"] > div {
-        background-color: #2A2D3E;
-    }
-    div[data-testid="stProgress"] > div > div {
-        background: linear-gradient(90deg, #00B4D8, #7C3AED);
-    }
-
-    /* ═══════ SELECTBOX ═══════ */
+    /* ══════ 输入框与选择框 ══════ */
     div[data-baseweb="select"] > div {
-        background: #12141E !important;
-        border-color: #2A2D3E !important;
+        background: #0E131F !important;
+        border-color: rgba(255, 255, 255, 0.1) !important;
+        border-radius: 10px !important;
+        color: #FFFFFF !important;
+    }
+    div[data-baseweb="select"]:hover > div {
+        border-color: var(--cyan-primary) !important;
     }
 
-    /* ═══════ FILE UPLOADER ═══════ */
+    /* ══════ 文件上传器 ══════ */
     div[data-testid="stFileUploader"] section {
-        border-color: #2A2D3E !important;
-        background: #12141E !important;
-        border-style: dashed;
-    }
-    div[data-testid="stFileUploader"] section:hover {
-        border-color: #00B4D8 !important;
-    }
-
-    /* ═══════ DATA TABLE ═══════ */
-    div[data-testid="stTable"] table {
-        background: #12141E !important;
-    }
-    div[data-testid="stTable"] th {
-        background: #1A1D2E !important;
-        color: #00B4D8 !important;
-        font-weight: 600;
-    }
-    div[data-testid="stTable"] td {
-        color: #CCC !important;
-        border-color: #2A2D3E !important;
-    }
-
-    /* ═══════ DATA FRAME ═══════ */
-    div[data-testid="stDataFrame"] {
-        background: #12141E !important;
-    }
-
-    /* ═══════ RADIO ═══════ */
-    div[data-testid="stRadio"] label {
-        color: #CCC !important;
-    }
-    div[data-testid="stRadio"] div[data-checked="true"] label {
-        color: #00B4D8 !important;
-    }
-
-    /* ═══════ MULTISELECT ═══════ */
-    div[data-baseweb="tag"] {
-        background: rgba(0, 180, 216, 0.15) !important;
-        color: #00B4D8 !important;
-        font-size: 0.9rem !important;
-    }
-    /* ═══════ RISK FILTER BUTTONS ═══════ */
-    .risk-filter-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0.4rem 1rem;
-        margin: 0.2rem;
-        border-radius: 20px;
-        border: 1.5px solid;
-        font-weight: 600;
-        font-size: 0.85rem;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        background: transparent;
-    }
-    .risk-filter-btn:hover {
-        transform: translateY(-1px);
-    }
-    .risk-filter-btn.active {
-        box-shadow: 0 0 12px rgba(0,0,0,0.3);
-    }
-
-    /* ═══════ FOOTER ═══════ */
-    .footer {
-        text-align: center;
-        color: #4A4D5E;
-        font-size: 0.7rem;
-        padding: 1.5rem 0 0.5rem;
-        border-top: 1px solid #1A1D2E;
-        margin-top: 2rem;
-    }
-
-    /* ═══════ PULSE GLOW ═══════ */
-    @keyframes pulseGlow {
-        0% { box-shadow: 0 0 5px rgba(0, 180, 216, 0.2); }
-        50% { box-shadow: 0 0 20px rgba(0, 180, 216, 0.4), 0 0 40px rgba(0, 180, 216, 0.1); }
-        100% { box-shadow: 0 0 5px rgba(0, 180, 216, 0.2); }
-    }
-    .result-glow {
-        animation: pulseGlow 2s ease-in-out infinite;
-    }
-
-    /* ─── Loading spinner override ─── */
-    .stSpinner {
-        color: #00B4D8 !important;
-    }
-
-    /* ═══════ DECORATIVE IMAGE CONTAINERS ═══════ */
-    .paper-image {
-        border: 1px solid #2A2D3E;
-        border-radius: 10px;
-        overflow: hidden;
-        transition: all 0.4s ease;
-        position: relative;
-    }
-    .paper-image:hover {
-        border-color: #00B4D8;
-        box-shadow: 0 0 20px rgba(0, 180, 216, 0.15);
-        transform: scale(1.01);
-    }
-    .paper-image img {
-        width: 100%;
-        height: auto;
-        display: block;
-    }
-    .paper-image .img-caption {
-        padding: 0.6rem 1rem;
-        background: linear-gradient(180deg, transparent, rgba(10, 13, 20, 0.9));
-        color: #8A8FA6;
-        font-size: 0.8rem;
-        position: absolute;
-        bottom: 0; left: 0; right: 0;
-    }
-
-    /* ═══════ SIDEBAR IMAGE ═══════ */
-    .sidebar-image {
-        border-radius: 8px;
-        overflow: hidden;
-        border: 1px solid #1A1D2E;
-        margin: 1rem 0;
+        background: rgba(14, 20, 35, 0.5) !important;
+        border: 2px dashed rgba(0, 229, 255, 0.25) !important;
+        border-radius: 14px !important;
+        padding: 1.5rem !important;
         transition: all 0.3s ease;
     }
-    .sidebar-image:hover {
-        border-color: #00B4D8;
-        box-shadow: 0 0 10px rgba(0, 180, 216, 0.1);
+    div[data-testid="stFileUploader"] section:hover {
+        border-color: var(--cyan-primary) !important;
+        background: rgba(0, 229, 255, 0.04) !important;
+        box-shadow: 0 0 20px rgba(0, 229, 255, 0.15) !important;
     }
 
-    /* ═══════ DATA STREAM DECORATION ═══════ */
-    @keyframes dataStream {
-        0% { transform: translateX(-100%); opacity: 0; }
-        10% { opacity: 1; }
-        90% { opacity: 1; }
-        100% { transform: translateX(calc(100vw + 100px)); opacity: 0; }
+    /* ══════ 折叠框 Expander ══════ */
+    div[data-testid="stExpander"] {
+        background: rgba(14, 20, 35, 0.6) !important;
+        border: 1px solid var(--border-subtle) !important;
+        border-radius: 12px !important;
+        overflow: hidden;
+        margin-bottom: 0.8rem;
     }
-    .data-stream {
-        position: fixed;
-        height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(0, 180, 216, 0.4), transparent);
-        z-index: 9998;
-        pointer-events: none;
-        animation: dataStream 6s ease-in-out infinite;
+    div[data-testid="stExpander"]:hover {
+        border-color: rgba(0, 229, 255, 0.3) !important;
     }
-    .data-stream:nth-child(1) { top: 30%; animation-delay: 0s; width: 200px; }
-    .data-stream:nth-child(2) { top: 55%; animation-delay: 2s; width: 150px; }
-    .data-stream:nth-child(3) { top: 75%; animation-delay: 4s; width: 180px; }
 
-    /* ═══════ RESPONSIVE: MOBILE ═══════ */
+    /* ══════ 指标微型卡片与统计卡 ══════ */
+    .metric-cell {
+        background: rgba(11, 16, 29, 0.65);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 10px;
+        padding: 0.75rem 0.9rem;
+        transition: all 0.2s ease;
+        position: relative;
+    }
+    .metric-cell:hover {
+        border-color: rgba(0, 229, 255, 0.35);
+        background: rgba(16, 24, 42, 0.8);
+        transform: translateY(-1px);
+    }
+    .metric-cell-value {
+        font-family: var(--font-mono);
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: var(--cyan-primary);
+        line-height: 1.3;
+    }
+    .metric-cell-label {
+        font-size: 0.74rem;
+        color: var(--text-secondary);
+        margin-top: 0.2rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* ══════ 响应式调整 ══════ */
     @media (max-width: 768px) {
-        .main-header { font-size: 1.4rem !important; padding: 0.8rem 0.5rem !important; }
-        .section-header { font-size: 1.0rem !important; padding: 0.4rem 0.6rem !important; }
-        .card { padding: 0.8rem !important; margin: 0.4rem 0 !important; }
-        .metric-value { font-size: 1.1rem !important; }
-        .stTabs [data-baseweb="tab"] { padding: 0.3rem 0.5rem !important; font-size: 0.75rem !important; }
-        div[data-testid="stImage"] img { width: 100% !important; }
-        [data-testid="column"] { min-width: 100% !important; }
-        .scan-line { animation-duration: 6s !important; }
-    }
-    @media (max-width: 480px) {
-        .main-header { font-size: 1.1rem !important; }
-        .card { padding: 0.6rem !important; }
-        .stTabs [data-baseweb="tab-list"] { flex-wrap: wrap !important; gap: 3px !important; }
-        .stTabs [data-baseweb="tab"] { font-size: 0.65rem !important; padding: 0.2rem 0.4rem !important; }
-        .metric-value { font-size: 0.95rem !important; }
-        .section-header { font-size: 0.85rem !important; }
-        .data-stream { display: none !important; }
-        .circuit-bg { opacity: 0.015 !important; }
+        .app-title-text { font-size: 1.35rem; }
+        .app-header-container { padding: 1.1rem; }
+        .system-metrics-ribbon { grid-template-columns: 1fr 1fr; }
+        .stTabs [data-baseweb="tab"] { padding: 0.45rem 0.8rem; font-size: 0.82rem; }
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Circuit board background
-st.markdown('<div class="circuit-bg"></div>', unsafe_allow_html=True)
-# Data stream particles
-st.markdown('<div class="data-stream"></div><div class="data-stream"></div><div class="data-stream"></div>', unsafe_allow_html=True)
-# Floating scan line HTML element (pure visual decoration)
-st.markdown('<div class="scan-line"></div>', unsafe_allow_html=True)
-
+# ═══════════════════════════════════════════════════════════════════════
+# 侧边栏：系统控制中心 & 学术成果导览
+# ═══════════════════════════════════════════════════════════════════════
 with st.sidebar:
-    st.markdown("### 🥚 系统导航")
-    st.markdown('<div class="accent-bar"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-section">请在右侧页面中进行操作</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="sidebar-brand-card">
+        <div style="font-size: 2.2rem; filter: drop-shadow(0 0 10px rgba(0,229,255,0.4));">🥚</div>
+        <div class="sidebar-brand-title">Egg RSI System</div>
+        <div class="sidebar-brand-sub">鸡蛋滚落稳定性智能分析 v2.5 Pro</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Sidebar decorative image — 鸡蛋物理机制
-    import os
+    st.markdown("#### ⚙️ 系统控制台")
+
+    # 学术背景机理卡片（自适应优雅预览，不拉伸）
     physics_img = os.path.join(os.path.dirname(__file__), 'assets', 'egg_physics.png')
     if os.path.exists(physics_img):
-        st.image(physics_img, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+        with st.expander("🔬 动力学影响机理图", expanded=False):
+            st.image(physics_img, caption="图: 静态形态异向性对滚动稳定性的影响机理", use_container_width=True)
+            st.caption("形态异向 ➔ 接触迁移 ➔ 姿态扰动 ➔ 稳定性下降")
 
-st.markdown('<div class="main-header">🥚 鸡蛋滚落稳定性分析系统</div>', unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown("""
+    <div style="padding: 0.4rem; color: #64748B; font-size: 0.75rem; text-align: center;">
+        🏛️ <b>西南大学创新训练项目</b><br>
+        指导教师：李长营 教授<br>
+        项目编号：S202510635378
+    </div>
+    """, unsafe_allow_html=True)
 
+
+# ═══════════════════════════════════════════════════════════════════════
+# 顶部系统控制台标头 (Interactive Header & Telemetry Ribbon)
+# ═══════════════════════════════════════════════════════════════════════
+st.markdown("""
+<div class="app-header-container">
+    <div class="app-title-row">
+        <div class="app-branding">
+            <div class="app-logo-box">🥚</div>
+            <div>
+                <div class="app-title-text">鸡蛋滚落稳定性智能分析系统</div>
+                <div class="app-subtitle-text">
+                    <span>Egg Roll Stability Intelligent Analyzer</span>
+                    <span style="opacity: 0.4;">|</span>
+                    <span style="color: #38BDF8;">基于计算机视觉与多模态机器学习融合</span>
+                </div>
+            </div>
+        </div>
+        <div class="app-status-badges">
+            <div class="header-badge highlight">
+                <span class="status-pulse"></span>
+                <span>推理核心：在线就绪</span>
+            </div>
+            <div class="header-badge">
+                <span>🏛️ 西南大学大创项目</span>
+            </div>
+            <div class="header-badge">
+                <span>编号: S202510635378</span>
+            </div>
+        </div>
+    </div>
+    <div class="system-metrics-ribbon">
+        <div class="ribbon-item">
+            <div class="ribbon-icon">📦</div>
+            <div>
+                <div class="ribbon-label">标本样本库</div>
+                <div class="ribbon-value">90 枚标准化样本</div>
+            </div>
+        </div>
+        <div class="ribbon-item">
+            <div class="ribbon-icon">📐</div>
+            <div>
+                <div class="ribbon-label">视觉解耦特征</div>
+                <div class="ribbon-value">19 维静态形态参数</div>
+            </div>
+        </div>
+        <div class="ribbon-item">
+            <div class="ribbon-icon">🏆</div>
+            <div>
+                <div class="ribbon-label">最优决策模型</div>
+                <div class="ribbon-value" style="color: #00E5FF;">SVM (AUC: 85.8%)</div>
+            </div>
+        </div>
+        <div class="ribbon-item">
+            <div class="ribbon-icon">⚡</div>
+            <div>
+                <div class="ribbon-label">全流程推理延迟</div>
+                <div class="ribbon-value" style="color: #10B981;">&lt; 35 ms / 枚</div>
+            </div>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 页面模块路由与主容器
+# ═══════════════════════════════════════════════════════════════════════
 try:
     from pages.showcase import show_showcase
     from pages.prediction import show_prediction
@@ -603,21 +606,21 @@ except ImportError as e:
     has_modules = False
     import_error = str(e)
 
-tab1, tab2 = st.tabs(["🔬 数据库展示与分析", "🤖 鸡蛋风险预测"])
+tab1, tab2 = st.tabs([
+    "🔬 数据库展示与多维分析 (Showcase & Telemetry)",
+    "🤖 鸡蛋风险智能预测与分选 (AI Prediction Studio)"
+])
 
 with tab1:
     if has_modules:
         show_showcase()
     else:
-        st.error(f"无法导入展示模块: {import_error}")
-        st.info("请确保 pages/showcase.py 文件存在并包含 show_showcase() 函数")
+        st.error(f"❌ 无法导入展示模块: {import_error}")
+        st.info("请确保 pages/showcase.py 存在并可加载")
 
 with tab2:
     if has_modules:
         show_prediction()
     else:
-        st.error(f"无法导入预测模块: {import_error}")
-        st.info("请确保 pages/prediction.py 文件存在并包含 show_prediction() 函数")
-
-
-
+        st.error(f"❌ 无法导入预测模块: {import_error}")
+        st.info("请确保 pages/prediction.py 存在并可加载")
