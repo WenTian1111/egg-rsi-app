@@ -124,6 +124,25 @@ def _show_pipeline_tab(df):
         """, unsafe_allow_html=True)
 
     # 4 步流水线图像展示
+    st.markdown("""
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.8rem;
+                background: rgba(11, 17, 32, 0.6); padding: 0.5rem 1rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+        <div style="font-family: var(--font-mono); font-size: 0.78rem; color: #94A3B8; display: flex; align-items: center; gap: 0.5rem;">
+            <span style="color: #00E5FF; font-weight: 700;">LIVE PIPELINE:</span>
+            <span>01 光学采集</span>
+            <span style="color: #64748B;">➔</span>
+            <span>02 矩阵转换</span>
+            <span style="color: #64748B;">➔</span>
+            <span>03 掩膜分割</span>
+            <span style="color: #64748B;">➔</span>
+            <span style="color: #10B981; font-weight: 600;">04 轮廓解耦</span>
+        </div>
+        <div style="font-family: var(--font-mono); font-size: 0.72rem; color: #10B981;">
+            ● 4-STAGE ACCELERATED
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
     with st.spinner(f"正在实时计算标本 {selected_egg} 号的处理图谱..."):
         try:
             pipeline = generate_pipeline_images(selected_egg)
@@ -142,14 +161,16 @@ def _show_pipeline_tab(df):
         with cols[idx]:
             img_bgr = pipeline.get(key) if pipeline else None
             st.markdown(f"""
-            <div style="background: rgba(14, 20, 35, 0.7); border: 1px solid rgba(255, 255, 255, 0.08);
-                        border-radius: 12px; padding: 0.6rem; margin-bottom: 0.6rem; text-align: center;">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
-                    <span style="font-size: 0.8rem; font-weight: 700; color: {accent};">{title}</span>
-                    <span style="font-size: 0.68rem; color: #64748B; background: rgba(255,255,255,0.04);
-                                 padding: 0.1rem 0.4rem; border-radius: 4px;">Step {idx+1}</span>
+            <div style="background: rgba(13, 19, 33, 0.8); border: 1px solid rgba(255, 255, 255, 0.08);
+                        border-top: 2.5px solid {accent}; border-radius: 14px; padding: 0.75rem 0.85rem; margin-bottom: 0.6rem;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;">
+                    <span style="font-size: 0.82rem; font-weight: 700; color: #FFFFFF;">{title}</span>
+                    <span style="font-size: 0.68rem; color: {accent}; background: {accent}18; border: 1px solid {accent}44;
+                                 padding: 0.1rem 0.45rem; border-radius: 9999px; font-weight: 600; font-family: var(--font-mono);">
+                        STAGE 0{idx+1}
+                    </span>
                 </div>
-                <div style="font-size: 0.72rem; color: #94A3B8; margin-bottom: 0.5rem; text-align: left;">{subtitle}</div>
+                <div style="font-size: 0.72rem; color: #94A3B8;">{subtitle}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -158,79 +179,125 @@ def _show_pipeline_tab(df):
                 img_rgb = Image.fromarray(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB))
                 st.image(img_rgb, use_container_width=True)
             else:
-                # 降级尝试专用预存图片或占位
                 contour_path = get_egg_image_path(selected_egg)
                 if os.path.exists(contour_path) and key in ['contour', 'original']:
                     st.image(contour_path, use_container_width=True)
                 else:
                     st.markdown("""
-                    <div style="height: 200px; background: rgba(15, 23, 42, 0.5); border: 1px dashed rgba(255,255,255,0.1);
-                                border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #64748B;">
+                    <div style="height: 200px; background: rgba(11, 16, 29, 0.6); border: 1.5px dashed rgba(255,255,255,0.08);
+                                border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #64748B; font-size: 0.8rem;">
                         图谱处理中或未载入
                     </div>
                     """, unsafe_allow_html=True)
 
-    st.markdown("<div style='height: 1.2rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 1.4rem;'></div>", unsafe_allow_html=True)
 
-    # 19 维特征数字仪表盘
+    # 19 维特征 Bento 数字遥测仪表盘
     st.markdown("""
     <div class="section-title">
         <span class="section-title-icon">📊</span>
-        <span>19 维形态特征数字遥测看板 (Morphological Telemetry Dashboard)</span>
+        <span>19 维形态特征数字遥测看板 (19-D Morphological Telemetry Bento)</span>
     </div>
     """, unsafe_allow_html=True)
 
-    # 12 项基础形态几何参数
-    st.markdown("##### 📐 基础几何形态参数 (12项解耦变量)")
-    basic_feature_meta = [
-        ('Static_ShapeIndex_机器视觉ESI', '蛋形指数 (ESI)', '', '短轴/长轴比值，直观反映饱满度'),
-        ('Static_AsymmetryIndex_不对称指数', '不对称指数', '', '锐端与钝端曲率偏心差异'),
-        ('Static_Eccentricity_离心率', '离心率', '', '椭圆拟合焦距比值，越近0越圆'),
-        ('Static_Area_像素面积', '像素面积', 'px²', '蛋体在顶视平面的投影绝对像素数'),
-        ('Static_Perimeter_轮廓周长', '轮廓周长', 'px', '封闭外边界像素欧氏距离累计'),
-        ('Static_MajorAxisLength_长轴像素长', '长轴像素长度', 'px', '等效椭圆第一主轴像素尺度'),
-        ('Static_MinorAxisLength_短轴像素长', '短轴像素长度', 'px', '等效椭圆第二主轴像素尺度'),
-        ('Static_Circularity_圆形度', '圆形度', '', '4π*面积/周长²，越接近1越规整'),
+    # 模块 A: 核心异向性关键驱动特征 (4大核心驱动参数)
+    st.markdown("""
+    <div style="font-size: 0.88rem; font-weight: 600; color: #00E5FF; margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.4rem;">
+        <span>🎯</span><span>核心几何异向性参数 (动力学失稳关键驱动)</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    core_features = [
+        ('Static_ShapeIndex_机器视觉ESI', '蛋形指数 (ESI)', '', '短轴与长轴之比，直接决定自转稳定性', '#00E5FF', 0.6, 0.9),
+        ('Static_AsymmetryIndex_不对称指数', '不对称指数 (Asymmetry)', '', '锐端与钝端曲率偏心差异程度', '#8B5CF6', 0.0, 0.3),
+        ('Static_Eccentricity_离心率', '离心率 (Eccentricity)', '', '拟合等效椭圆第一焦距比，越趋近0越规整', '#38BDF8', 0.4, 0.9),
+        ('Static_Circularity_圆形度', '圆形度 (Circularity)', '', '4π*面积/周长²，反映轮廓圆滑规整度', '#10B981', 0.7, 1.0),
+    ]
+
+    col_core = st.columns(4)
+    for idx, (col_k, label, unit, desc, accent_c, v_min, v_max) in enumerate(core_features):
+        v = egg_row.get(col_k, 0)
+        v_num = float(v) if isinstance(v, (int, float)) else 0.0
+        pct = max(0, min(100, int((v_num - v_min) / (v_max - v_min + 1e-6) * 100))) if v_max > v_min else 50
+        with col_core[idx]:
+            st.markdown(f"""
+            <div style="background: linear-gradient(145deg, rgba(15, 23, 42, 0.85) 0%, rgba(9, 14, 26, 0.95) 100%);
+                        border: 1px solid rgba(255, 255, 255, 0.08); border-top: 3px solid {accent_c};
+                        border-radius: 14px; padding: 1rem 1.1rem; box-shadow: 0 8px 24px rgba(0,0,0,0.4);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.4rem;">
+                    <span style="font-size: 0.76rem; color: #94A3B8; font-weight: 500;">{label}</span>
+                    <span style="font-family: var(--font-mono); font-size: 0.68rem; color: {accent_c}; background: {accent_c}18;
+                                 padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: 700;">KEY</span>
+                </div>
+                <div style="font-family: var(--font-mono); font-size: 1.45rem; font-weight: 800; color: #FFFFFF; line-height: 1.2;">
+                    {v_num:.4f}
+                </div>
+                <div style="margin: 0.6rem 0 0.4rem; background: rgba(255,255,255,0.06); height: 5px; border-radius: 3px; overflow: hidden;">
+                    <div style="background: {accent_c}; width: {pct}%; height: 100%; border-radius: 3px; box-shadow: 0 0 8px {accent_c};"></div>
+                </div>
+                <div style="font-size: 0.7rem; color: #64748B; line-height: 1.3;">{desc}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # 模块 B: 尺度与空间投影参数 (8项解耦特征)
+    st.markdown("<div style='height: 0.9rem;'></div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style="font-size: 0.88rem; font-weight: 600; color: #E2E8F0; margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.4rem;">
+        <span>📐</span><span>空间尺度与包围盒解耦参数 (8项特征)</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    geom_items = [
+        ('Static_Area_像素面积', '像素面积', 'px²', '顶视投影绝对像素面积'),
+        ('Static_Perimeter_轮廓周长', '轮廓周长', 'px', '封闭外边界像素欧氏距离'),
+        ('Static_MajorAxisLength_长轴像素长', '长轴长度', 'px', '第一主轴等效像素尺度'),
+        ('Static_MinorAxisLength_短轴像素长', '短轴长度', 'px', '第二主轴等效像素尺度'),
         ('Static_Solidity_坚实度', '坚实度', '', '蛋体面积与凸包面积比值'),
         ('Static_Extent_延展度', '延展度', '', '蛋体面积与外接矩形面积比值'),
         ('Static_EquivalentDiameter_等效圆直径', '等效圆直径', 'px', '相同面积圆的等效直径'),
-        ('Static_MajorAxisOffsetRatio_长轴偏移率', '长轴偏移率', '', '质心相对几何中心在主轴上的位移比'),
+        ('Static_MajorAxisOffsetRatio_长轴偏移率', '长轴偏移率', '', '质心相对几何中心位移比率'),
     ]
 
-    col_grid = st.columns(4)
-    for idx, (col_name, label_cn, unit, tooltip) in enumerate(basic_feature_meta):
+    col_geom = st.columns(4)
+    for idx, (col_name, label_cn, unit, tooltip) in enumerate(geom_items):
         val = egg_row.get(col_name, 0)
-        with col_grid[idx % 4]:
+        with col_geom[idx % 4]:
             if isinstance(val, float):
                 disp_val = f"{val:.4f}" if abs(val) < 1000 else f"{val:.1f}"
             else:
                 disp_val = str(val)
-            unit_str = f" <span style='font-size:0.7rem;color:#64748B;'>{unit}</span>" if unit else ""
+            unit_str = f" <span style='font-size:0.68rem;color:#64748B;'>{unit}</span>" if unit else ""
             st.markdown(f"""
-            <div class="metric-cell" title="{tooltip}">
+            <div class="metric-cell" title="{tooltip}" style="margin-bottom: 0.6rem;">
                 <div class="metric-cell-value">{disp_val}{unit_str}</div>
                 <div class="metric-cell-label">{label_cn}</div>
             </div>
             """, unsafe_allow_html=True)
 
-    # 7 项不变 Hu 矩矩阵
-    st.markdown("<div style='height: 0.8rem;'></div>", unsafe_allow_html=True)
-    st.markdown("##### 🎯 7 阶正交不变 Hu 矩矩阵 (Hu Invariant Moments Matrix)")
+    # 模块 C: 7 阶正交不变 Hu 矩矩阵 (Hu Invariant Moments Matrix)
+    st.markdown("<div style='height: 0.7rem;'></div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style="font-size: 0.88rem; font-weight: 600; color: #A78BFA; margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.4rem;">
+        <span>🔮</span><span>7 阶正交旋转与尺度不变 Hu 矩矩阵谱 (Hu Moment Spectrum)</span>
+    </div>
+    """, unsafe_allow_html=True)
+
     hu_keys = [f'Static_Hu{i}' for i in range(1, 8)]
     hu_cols = st.columns(7)
     for i, hu_key in enumerate(hu_keys):
         with hu_cols[i]:
             hu_val = egg_row.get(hu_key, 0)
             if isinstance(hu_val, float):
-                hu_disp = f"{hu_val:.3e}" if abs(hu_val) < 0.01 else f"{hu_val:.4f}"
+                hu_disp = f"{hu_val:.2e}" if abs(hu_val) < 0.01 else f"{hu_val:.4f}"
             else:
                 hu_disp = str(hu_val)
             st.markdown(f"""
-            <div style="background: rgba(14, 20, 35, 0.8); border: 1px solid rgba(255,255,255,0.06);
-                        border-radius: 8px; padding: 0.6rem 0.4rem; text-align: center;">
-                <div style="font-size: 0.72rem; color: #A78BFA; font-weight: 600; margin-bottom: 0.2rem;">Hu {i+1}</div>
-                <div style="font-family: var(--font-mono); font-size: 0.85rem; color: #FFFFFF; font-weight: 600;">{hu_disp}</div>
-                <div style="font-size: 0.62rem; color: #64748B; margin-top: 0.2rem;">阶不变性</div>
+            <div style="background: rgba(14, 20, 35, 0.85); border: 1px solid rgba(167, 139, 250, 0.2);
+                        border-radius: 10px; padding: 0.65rem 0.4rem; text-align: center;
+                        box-shadow: inset 0 0 12px rgba(167, 139, 250, 0.04);">
+                <div style="font-size: 0.72rem; color: #C084FC; font-weight: 700; margin-bottom: 0.2rem; font-family: var(--font-mono);">Hu {i+1}</div>
+                <div style="font-family: var(--font-mono); font-size: 0.82rem; color: #FFFFFF; font-weight: 600;">{hu_disp}</div>
+                <div style="font-size: 0.62rem; color: #64748B; margin-top: 0.25rem;">阶不变性</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -325,11 +392,20 @@ def _show_browser_tab(df):
 
     with left_col:
         st.markdown(f"""
-        <div class="sci-card" style="border-top: 3px solid {r_color};">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
-                <div style="font-weight: 700; font-size: 1.1rem; color: #FFFFFF;">第 {selected_egg} 号标本详情</div>
+        <div class="hud-chamber" style="border-top: 3px solid {r_color}; margin-bottom: 1rem;">
+            <div class="hud-bracket hud-bracket-tl"></div>
+            <div class="hud-bracket hud-bracket-tr"></div>
+            <div class="hud-bracket hud-bracket-bl"></div>
+            <div class="hud-bracket hud-bracket-br"></div>
+            <div class="hud-laser-scanner"></div>
+
+            <div class="hud-telemetry-header">
+                <div>
+                    <span class="hud-tag">SPECIMEN #{selected_egg:02d}</span>
+                    <span style="margin-left: 0.4rem; color: #E2E8F0; font-weight: 600;">GEOMETRIC CONTOUR</span>
+                </div>
                 <div style="background: {r_color}22; border: 1px solid {r_color}; color: {r_color};
-                            padding: 0.2rem 0.6rem; border-radius: 9999px; font-weight: 700; font-size: 0.8rem;">
+                            padding: 0.15rem 0.6rem; border-radius: 9999px; font-weight: 700; font-size: 0.75rem;">
                     {r_icon} {r_name}
                 </div>
             </div>
@@ -337,33 +413,33 @@ def _show_browser_tab(df):
 
         img_path = get_egg_image_path(selected_egg)
         if os.path.exists(img_path):
-            st.image(img_path, caption=f"标本 {selected_egg} 号 — 提取几何轮廓", use_container_width=True)
+            st.image(img_path, caption=f"标本 {selected_egg} 号 — 计算机视觉形态提取", use_container_width=True)
         else:
             st.info("标本轮廓图像加载中")
 
         st.markdown(f"""
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 0.8rem;">
-                <div style="background: rgba(255,255,255,0.03); padding: 0.5rem 0.7rem; border-radius: 8px;">
-                    <div style="font-size: 0.7rem; color: #64748B;">蛋形指数 (ESI)</div>
-                    <div style="font-weight: 700; color: #00E5FF; font-family: var(--font-mono); font-size: 1.05rem;">
+                <div style="background: rgba(11,17,32,0.8); border: 1px solid rgba(255,255,255,0.06); padding: 0.55rem 0.75rem; border-radius: 10px;">
+                    <div style="font-size: 0.7rem; color: #94A3B8;">蛋形指数 (ESI)</div>
+                    <div style="font-weight: 700; color: #00E5FF; font-family: var(--font-mono); font-size: 1.1rem;">
                         {egg_row.get('Static_ShapeIndex_机器视觉ESI', 0):.4f}
                     </div>
                 </div>
-                <div style="background: rgba(255,255,255,0.03); padding: 0.5rem 0.7rem; border-radius: 8px;">
-                    <div style="font-size: 0.7rem; color: #64748B;">不对称指数</div>
-                    <div style="font-weight: 700; color: #FFFFFF; font-family: var(--font-mono); font-size: 1.05rem;">
+                <div style="background: rgba(11,17,32,0.8); border: 1px solid rgba(255,255,255,0.06); padding: 0.55rem 0.75rem; border-radius: 10px;">
+                    <div style="font-size: 0.7rem; color: #94A3B8;">不对称指数</div>
+                    <div style="font-weight: 700; color: #A78BFA; font-family: var(--font-mono); font-size: 1.1rem;">
                         {egg_row.get('Static_AsymmetryIndex_不对称指数', 0):.4f}
                     </div>
                 </div>
-                <div style="background: rgba(255,255,255,0.03); padding: 0.5rem 0.7rem; border-radius: 8px;">
-                    <div style="font-size: 0.7rem; color: #64748B;">离心率</div>
-                    <div style="font-weight: 700; color: #FFFFFF; font-family: var(--font-mono); font-size: 1.05rem;">
+                <div style="background: rgba(11,17,32,0.8); border: 1px solid rgba(255,255,255,0.06); padding: 0.55rem 0.75rem; border-radius: 10px;">
+                    <div style="font-size: 0.7rem; color: #94A3B8;">离心率</div>
+                    <div style="font-weight: 700; color: #38BDF8; font-family: var(--font-mono); font-size: 1.1rem;">
                         {egg_row.get('Static_Eccentricity_离心率', 0):.4f}
                     </div>
                 </div>
-                <div style="background: rgba(255,255,255,0.03); padding: 0.5rem 0.7rem; border-radius: 8px;">
-                    <div style="font-size: 0.7rem; color: #64748B;">圆形度</div>
-                    <div style="font-weight: 700; color: #FFFFFF; font-family: var(--font-mono); font-size: 1.05rem;">
+                <div style="background: rgba(11,17,32,0.8); border: 1px solid rgba(255,255,255,0.06); padding: 0.55rem 0.75rem; border-radius: 10px;">
+                    <div style="font-size: 0.7rem; color: #94A3B8;">圆形度</div>
+                    <div style="font-weight: 700; color: #10B981; font-family: var(--font-mono); font-size: 1.1rem;">
                         {egg_row.get('Static_Circularity_圆形度', 0):.4f}
                     </div>
                 </div>
