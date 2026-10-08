@@ -83,27 +83,37 @@ def _render_upload_workflow():
 
             # 流水线4步图示
             st.markdown(f"""
-            <div style="display: flex; align-items: center; justify-content: space-between; margin: 1rem 0 0.6rem;">
-                <span style="font-weight: 600; color: #FFFFFF; font-size: 0.95rem;">📷 视觉分割流水线中间态观测</span>
-                <span style="background: rgba(0, 229, 255, 0.1); border: 1px solid rgba(0, 229, 255, 0.3);
-                             color: #00E5FF; padding: 0.15rem 0.6rem; border-radius: 6px; font-size: 0.75rem;">
-                    策略引擎: {strategy}
-                </span>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin: 1.2rem 0 0.8rem;
+                        background: rgba(11, 17, 32, 0.6); padding: 0.6rem 1rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06);">
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-family: var(--font-mono); font-size: 0.8rem;">
+                    <span style="color: #00E5FF; font-weight: 700;">VISION PIPELINE:</span>
+                    <span style="color: #E2E8F0;">LIVE SEGMENTATION COMPLETE</span>
+                </div>
+                <div style="background: rgba(0, 229, 255, 0.12); border: 1px solid rgba(0, 229, 255, 0.35);
+                             color: #00E5FF; padding: 0.18rem 0.65rem; border-radius: 9999px; font-size: 0.74rem; font-weight: 600; font-family: var(--font-mono);">
+                    ENGINE: {strategy}
+                </div>
             </div>
             """, unsafe_allow_html=True)
 
             cols = st.columns(4)
             step_defs = [
-                ('original', '01. 原始图像'),
-                ('grayscale', '02. 灰度矩阵'),
-                ('hsv_mask', '03. 分割掩膜'),
-                ('contour_viz', '04. 拟合轮廓'),
+                ('original', '01. 原始图像', '#38BDF8'),
+                ('grayscale', '02. 灰度矩阵', '#A78BFA'),
+                ('hsv_mask', '03. 分割掩膜', '#00E5FF'),
+                ('contour_viz', '04. 拟合轮廓', '#10B981'),
             ]
-            for idx, (key, label) in enumerate(step_defs):
+            for idx, (key, label, accent_c) in enumerate(step_defs):
                 with cols[idx]:
+                    st.markdown(f"""
+                    <div style="background: rgba(13, 19, 33, 0.8); border: 1px solid rgba(255, 255, 255, 0.08);
+                                border-top: 2.5px solid {accent_c}; border-radius: 12px; padding: 0.55rem 0.75rem; margin-bottom: 0.5rem;">
+                        <span style="font-size: 0.78rem; font-weight: 700; color: #FFFFFF;">{label}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
                     img = result['steps'].get(key)
                     if img is not None:
-                        st.image(img, caption=label, use_container_width=True)
+                        st.image(img, use_container_width=True)
                     else:
                         st.info(f"{label}: 处理中")
 
@@ -121,18 +131,18 @@ def _render_upload_workflow():
 def _render_quick_select_workflow():
     """90枚标本库快速诊断工作流"""
     st.markdown("""
-    <div style="background: rgba(14, 20, 35, 0.6); border: 1px solid rgba(255, 255, 255, 0.06);
-                border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.2rem;">
-        <div style="font-weight: 600; color: #00E5FF; font-size: 0.95rem; margin-bottom: 0.3rem;">
-            🎯 标准化标本库即时调用与模型验证
+    <div style="background: rgba(13, 19, 33, 0.7); border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 14px; padding: 1.1rem 1.4rem; margin-bottom: 1.2rem;">
+        <div style="font-weight: 700; color: #00E5FF; font-size: 0.98rem; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.45rem;">
+            <span>🎯</span><span>标准化标本库即时调用与模型验证 (Specimen Telemetry & AI Diagnostic)</span>
         </div>
-        <div style="color: #94A3B8; font-size: 0.85rem;">
-            从国家级大创实验收集的 90 枚标准化几何标本中挑选样本，直接加载其高精度轮廓并调用模型执行稳定性分类验证。
+        <div style="color: #94A3B8; font-size: 0.86rem; line-height: 1.5;">
+            从标准化几何标本库中挑选样本，直接加载其高精度光学轮廓图谱并调用决策模型执行动力学稳定性分类验证。
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    col_left, col_right = st.columns([1, 2])
+    col_left, col_right = st.columns([1.1, 1.9])
 
     with col_left:
         # 扫描现有可用鸡蛋图像
@@ -147,19 +157,16 @@ def _render_quick_select_workflow():
                 available_eggs = sorted(list(set(found_eggs)))
 
         egg_id = st.selectbox(
-            "选择标本编号",
+            "选择待诊断标本编号",
             available_eggs,
             format_func=lambda x: f"第 {x} 号鸡蛋标本",
             key="quick_egg_select_picker"
         )
 
         image_path = get_egg_image_path(egg_id)
-        if os.path.exists(image_path):
-            st.image(image_path, caption=f"标本 {egg_id} 号 — 几何边缘提取图", use_container_width=True)
-        else:
-            st.warning(f"标本图像载入中: {egg_id}号")
 
         fusion_df = load_fusion_data()
+        r_lbl, r_clr, r_emo = '未知', '#94A3B8', '⚪'
         if fusion_df is not None:
             id_col = 'egg_id' if 'egg_id' in fusion_df.columns else ('EggID' if 'EggID' in fusion_df.columns else None)
             rsi_col = 'RSI' if 'RSI' in fusion_df.columns else ('RSI_GroupNum' if 'RSI_GroupNum' in fusion_df.columns else None)
@@ -168,14 +175,34 @@ def _render_quick_select_workflow():
                 if not matched.empty:
                     true_risk = int(matched.iloc[0].get(rsi_col, 1))
                     r_lbl, r_clr, r_emo = RSI_LABELS.get(true_risk, ('未知', '#94A3B8', '⚪'))
-                    st.markdown(f"""
-                    <div style="background: {r_clr}18; border: 1px solid {r_clr}66; border-radius: 10px;
-                                padding: 0.6rem; text-align: center; margin-top: 0.6rem;">
-                        <span style="font-size: 1.1rem;">{r_emo}</span>
-                        <span style="font-size: 0.82rem; color: #94A3B8; margin-left: 0.3rem;">物理实验实测标签:</span>
-                        <span style="font-weight: 700; color: {r_clr}; margin-left: 0.3rem;">{r_lbl}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
+
+        # 全息 HUD 扫描观测舱包装
+        st.markdown(f"""
+        <div class="hud-chamber" style="border-top: 3px solid {r_clr}; margin-top: 0.4rem;">
+            <div class="hud-bracket hud-bracket-tl"></div>
+            <div class="hud-bracket hud-bracket-tr"></div>
+            <div class="hud-bracket hud-bracket-bl"></div>
+            <div class="hud-bracket hud-bracket-br"></div>
+            <div class="hud-laser-scanner"></div>
+
+            <div class="hud-telemetry-header">
+                <div>
+                    <span class="hud-tag">SPECIMEN #{egg_id:02d}</span>
+                    <span style="margin-left: 0.35rem; color: #E2E8F0; font-weight: 600;">ACTIVE TARGET</span>
+                </div>
+                <div style="background: {r_clr}22; border: 1px solid {r_clr}; color: {r_clr};
+                            padding: 0.12rem 0.55rem; border-radius: 9999px; font-weight: 700; font-size: 0.72rem;">
+                    {r_emo} 实测: {r_lbl}
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        if os.path.exists(image_path):
+            st.image(image_path, caption=f"标本 {egg_id} 号 — 边缘拟合几何轮廓", use_container_width=True)
+        else:
+            st.warning(f"标本图像载入中: {egg_id}号")
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with col_right:
         with st.spinner("正在提取形态学参数..."):
@@ -187,46 +214,66 @@ def _render_quick_select_workflow():
 
 
 def _render_feature_telemetry_grid(features):
-    """渲染 19 维特征紧凑网格"""
+    """渲染 19 维特征高级 Bento 网格"""
     if not features:
         st.info("特征提取中...")
         return
 
     st.markdown("""
-    <div style="font-size: 0.95rem; font-weight: 600; color: #FFFFFF; margin: 1rem 0 0.5rem; display: flex; align-items: center; gap: 0.4rem;">
-        <span>📐</span><span>实时形态解耦特征 (19-Dimension Telemetry)</span>
+    <div style="font-size: 0.92rem; font-weight: 700; color: #FFFFFF; margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.45rem;">
+        <span>📐</span><span>实时形态解耦特征 (19-Dimension Telemetry Bento)</span>
     </div>
     """, unsafe_allow_html=True)
 
+    # 4 大核心关键几何指标
+    core_items = [
+        ('Static_ShapeIndex_机器视觉ESI', '蛋形指数(ESI)', '#00E5FF', '饱满度指标'),
+        ('Static_AsymmetryIndex_不对称指数', '不对称指数', '#A78BFA', '曲率偏心差'),
+        ('Static_Eccentricity_离心率', '离心率', '#38BDF8', '焦点比值'),
+        ('Static_Circularity_圆形度', '圆形度', '#10B981', '圆滑规整度'),
+    ]
+
+    c4 = st.columns(4)
+    for idx, (col_k, label, accent_c, sub) in enumerate(core_items):
+        v = features.get(col_k, 0)
+        v_num = float(v) if isinstance(v, (int, float)) else 0.0
+        with c4[idx]:
+            st.markdown(f"""
+            <div style="background: rgba(13, 19, 33, 0.85); border: 1px solid rgba(255,255,255,0.08); border-top: 2.5px solid {accent_c};
+                        border-radius: 12px; padding: 0.65rem 0.8rem; margin-bottom: 0.6rem;">
+                <div style="font-size: 0.72rem; color: #94A3B8;">{label}</div>
+                <div style="font-family: var(--font-mono); font-size: 1.18rem; font-weight: 800; color: #FFFFFF; margin: 0.15rem 0;">
+                    {v_num:.4f}
+                </div>
+                <div style="font-size: 0.65rem; color: {accent_c}; font-weight: 600;">{sub}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # 8 项空间尺寸指标
     geom_items = [
-        ('Static_ShapeIndex_机器视觉ESI', '蛋形指数(ESI)', ''),
-        ('Static_AsymmetryIndex_不对称指数', '不对称指数', ''),
-        ('Static_Eccentricity_离心率', '离心率', ''),
         ('Static_Area_像素面积', '像素面积', 'px²'),
         ('Static_Perimeter_轮廓周长', '周长', 'px'),
         ('Static_MajorAxisLength_长轴像素长度', '长轴', 'px'),
         ('Static_MinorAxisLength_短轴像素长度', '短轴', 'px'),
-        ('Static_Circularity_圆形度', '圆形度', ''),
         ('Static_Solidity_坚实度', '坚实度', ''),
         ('Static_Extent_延展度', '延展度', ''),
         ('Static_EquivalentDiameter_等效圆直径', '等效直径', 'px'),
-        ('Static_MajorAxisOffsetRatio_长轴偏移率', '长轴偏移率', ''),
+        ('Static_MajorAxisOffsetRatio_长轴偏移率', '主轴偏移', ''),
     ]
 
-    c_cols = st.columns(6)
+    c_cols = st.columns(4)
     for idx, (col_k, label, unit) in enumerate(geom_items):
         v = features.get(col_k, 0)
-        with c_cols[idx % 6]:
+        with c_cols[idx % 4]:
             if isinstance(v, float):
                 v_str = f"{v:.4f}" if abs(v) < 1000 else f"{v:.1f}"
             else:
                 v_str = str(v)
-            u_str = f" <span style='font-size:0.6rem;color:#64748B;'>{unit}</span>" if unit else ""
+            u_str = f" <span style='font-size:0.65rem;color:#64748B;'>{unit}</span>" if unit else ""
             st.markdown(f"""
-            <div style="background: rgba(14, 20, 35, 0.7); border: 1px solid rgba(255,255,255,0.06);
-                        border-radius: 8px; padding: 0.45rem 0.55rem; text-align: center; margin-bottom: 0.4rem;">
-                <div style="font-family: var(--font-mono); font-size: 0.92rem; font-weight: 700; color: #00E5FF;">{v_str}{u_str}</div>
-                <div style="font-size: 0.68rem; color: #94A3B8; margin-top: 0.15rem;">{label}</div>
+            <div class="metric-cell" style="padding: 0.55rem 0.75rem; margin-bottom: 0.45rem;">
+                <div class="metric-cell-value" style="font-size: 1.05rem;">{v_str}{u_str}</div>
+                <div class="metric-cell-label" style="font-size: 0.7rem;">{label}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -237,17 +284,17 @@ def _render_feature_telemetry_grid(features):
         with hu_cols[i - 1]:
             h_disp = f"{h_val:.2e}" if isinstance(h_val, float) else str(h_val)
             st.markdown(f"""
-            <div style="background: rgba(10, 15, 26, 0.6); border: 1px solid rgba(255,255,255,0.04);
-                        border-radius: 6px; padding: 0.35rem 0.2rem; text-align: center;">
-                <div style="font-size: 0.65rem; color: #A78BFA; font-weight: 600;">Hu{i}</div>
-                <div style="font-family: var(--font-mono); font-size: 0.72rem; color: #CBD5E1;">{h_disp}</div>
+            <div style="background: rgba(11, 16, 29, 0.75); border: 1px solid rgba(167, 139, 250, 0.18);
+                        border-radius: 8px; padding: 0.4rem 0.25rem; text-align: center;">
+                <div style="font-size: 0.65rem; color: #C084FC; font-weight: 700; font-family: var(--font-mono);">Hu{i}</div>
+                <div style="font-family: var(--font-mono); font-size: 0.72rem; color: #E2E8F0;">{h_disp}</div>
             </div>
             """, unsafe_allow_html=True)
 
 
 def _render_model_inference_block(features, source_key='default'):
     """模型选择与推断执行卡片"""
-    st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 1.2rem;'></div>", unsafe_allow_html=True)
     st.markdown("""
     <div class="section-title">
         <span class="section-title-icon">⚡</span>
@@ -255,22 +302,60 @@ def _render_model_inference_block(features, source_key='default'):
     </div>
     """, unsafe_allow_html=True)
 
-    col_m, col_btn = st.columns([1.5, 1])
+    # 模型卡片横幅比武
+    st.markdown("""
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; margin-bottom: 1rem;">
+        <div style="background: rgba(0, 229, 255, 0.08); border: 1px solid rgba(0, 229, 255, 0.35); border-radius: 12px; padding: 0.65rem 0.9rem;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.76rem; color: #00E5FF; font-weight: 700;">
+                <span>SVM 支持向量机</span><span>🏆 推荐最优</span>
+            </div>
+            <div style="font-family: var(--font-mono); font-size: 1.1rem; font-weight: 800; color: #FFFFFF; margin-top: 0.2rem;">
+                AUC: 85.85% <span style="font-size: 0.75rem; color: #94A3B8; font-weight: 400;">/ Acc: 80.0%</span>
+            </div>
+        </div>
+        <div style="background: rgba(139, 92, 246, 0.08); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 12px; padding: 0.65rem 0.9rem;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.76rem; color: #C084FC; font-weight: 700;">
+                <span>随机森林 (RF)</span><span>高鲁棒性</span>
+            </div>
+            <div style="font-family: var(--font-mono); font-size: 1.1rem; font-weight: 800; color: #FFFFFF; margin-top: 0.2rem;">
+                AUC: 84.14% <span style="font-size: 0.75rem; color: #94A3B8; font-weight: 400;">/ Acc: 82.2%</span>
+            </div>
+        </div>
+        <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 12px; padding: 0.65rem 0.9rem;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.76rem; color: #F59E0B; font-weight: 700;">
+                <span>梯度提升 (GBDT)</span><span>残差加权</span>
+            </div>
+            <div style="font-family: var(--font-mono); font-size: 1.1rem; font-weight: 800; color: #FFFFFF; margin-top: 0.2rem;">
+                AUC: 81.33% <span style="font-size: 0.75rem; color: #94A3B8; font-weight: 400;">/ Acc: 80.0%</span>
+            </div>
+        </div>
+        <div style="background: rgba(148, 163, 184, 0.08); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 12px; padding: 0.65rem 0.9rem;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.76rem; color: #94A3B8; font-weight: 700;">
+                <span>逻辑回归 (LR)</span><span>线性基准</span>
+            </div>
+            <div style="font-family: var(--font-mono); font-size: 1.1rem; font-weight: 800; color: #FFFFFF; margin-top: 0.2rem;">
+                AUC: 79.52% <span style="font-size: 0.75rem; color: #94A3B8; font-weight: 400;">/ Acc: 76.7%</span>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_m, col_btn = st.columns([1.4, 1.2])
 
     with col_m:
         model_keys = list(MODEL_NAMES.keys())
         def_idx = model_keys.index('svm') if 'svm' in model_keys else 0
         selected_model = st.selectbox(
-            "选择分类预测模型",
+            "选择推断决策模型",
             model_keys,
             index=def_idx,
-            format_func=lambda x: f"{MODEL_NAMES.get(x, x)} {'(推荐最优)' if x=='svm' else ''}",
+            format_func=lambda x: f"{MODEL_NAMES.get(x, x)} {'(推荐最优核心)' if x=='svm' else ''}",
             key=f"{source_key}_model_picker"
         )
 
     with col_btn:
         st.markdown("<div style='height: 1.7rem;'></div>", unsafe_allow_html=True)
-        run_btn = st.button("🚀 启动智能推断与产线分选评估", type="primary", use_container_width=True, key=f"{source_key}_run_btn")
+        run_btn = st.button("🚀 启动多模态推断与产线分选评估", type="primary", use_container_width=True, key=f"{source_key}_run_btn")
 
     session_pred_key = f"{source_key}_pred_result"
 
@@ -294,37 +379,37 @@ def _display_diagnostic_report(prediction, probabilities, model_name):
     """展示顶级科技感自动化分选产线决策报告"""
     risk_name, risk_color, risk_icon = RSI_LABELS.get(prediction, ('未知', '#94A3B8', '⚪'))
 
-    st.markdown("<div style='height: 0.8rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
     st.markdown("""
-    <div style="font-weight: 700; font-size: 1.15rem; color: #FFFFFF; margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem;">
+    <div style="font-weight: 700; font-size: 1.15rem; color: #FFFFFF; margin-bottom: 0.9rem; display: flex; align-items: center; gap: 0.5rem;">
         <span>📋</span><span>自动化分选决策与健康诊断报告 (Sorting & Actuator Report)</span>
     </div>
     """, unsafe_allow_html=True)
 
-    card_col, chart_col = st.columns([1.1, 1.4])
+    card_col, chart_col = st.columns([1.1, 1.5])
 
     with card_col:
         st.markdown(f"""
-        <div style="background: linear-gradient(135deg, {risk_color}18 0%, rgba(14, 20, 35, 0.9) 100%);
+        <div style="background: linear-gradient(135deg, {risk_color}22 0%, rgba(13, 19, 33, 0.95) 100%);
                     border: 2px solid {risk_color};
-                    border-radius: 16px;
-                    padding: 1.5rem 1.2rem;
+                    border-radius: 18px;
+                    padding: 1.6rem 1.4rem;
                     text-align: center;
-                    box-shadow: 0 0 25px {risk_color}33;
+                    box-shadow: 0 0 32px {risk_color}38, inset 0 1px 0 rgba(255,255,255,0.15);
                     position: relative;
                     overflow: hidden;">
-            <div style="position: absolute; top: -15px; right: -15px; width: 60px; height: 60px;
-                        background: {risk_color}22; border-radius: 50%; filter: blur(15px);"></div>
-            <div style="font-size: 3rem; margin-bottom: 0.4rem; filter: drop-shadow(0 0 10px {risk_color});">{risk_icon}</div>
-            <div style="font-family: var(--font-display); font-size: 1.8rem; font-weight: 800; color: {risk_color}; margin-bottom: 0.2rem;">
+            <div style="position: absolute; top: -20px; right: -20px; width: 80px; height: 80px;
+                        background: {risk_color}33; border-radius: 50%; filter: blur(20px);"></div>
+            <div style="font-size: 3.2rem; margin-bottom: 0.4rem; filter: drop-shadow(0 0 14px {risk_color});">{risk_icon}</div>
+            <div style="font-family: var(--font-display); font-size: 2rem; font-weight: 800; color: {risk_color}; margin-bottom: 0.2rem; letter-spacing: -0.01em;">
                 {risk_name}
             </div>
-            <div style="font-size: 0.85rem; color: #CBD5E1; margin-bottom: 0.8rem;">
-                动态滚落易损性指数等级: <b style="color: #FFFFFF;">Level {prediction}</b>
+            <div style="font-size: 0.88rem; color: #CBD5E1; margin-bottom: 0.9rem;">
+                滚落稳定性风险指数: <b style="color: #FFFFFF; font-family: var(--font-mono);">Level {prediction}</b>
             </div>
-            <div style="display: inline-block; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08);
-                        padding: 0.3rem 0.8rem; border-radius: 9999px; font-size: 0.75rem; color: #94A3B8;">
-                推断模型核心: {MODEL_NAMES.get(model_name, model_name)}
+            <div style="display: inline-block; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1);
+                        padding: 0.35rem 0.9rem; border-radius: 9999px; font-size: 0.76rem; color: #CBD5E1; font-family: var(--font-mono);">
+                推断引擎: {MODEL_NAMES.get(model_name, model_name)}
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -348,7 +433,7 @@ def _display_diagnostic_report(prediction, probabilities, model_name):
                     y=[label],
                     x=[prob],
                     orientation='h',
-                    marker=dict(color=bar_c, cornerradius=5),
+                    marker=dict(color=bar_c, cornerradius=6),
                     text=[f"{prob:.1%}"],
                     textposition='inside',
                     insidetextanchor='middle',
@@ -358,10 +443,10 @@ def _display_diagnostic_report(prediction, probabilities, model_name):
                 ))
 
             fig.update_layout(
-                title=dict(text='各风险类别后验概率分布 (Class Probability Distribution)', font=dict(color='#E2E8F0', size=13)),
-                xaxis=dict(range=[0, 1], tickformat='.0%', tickfont=dict(color='#64748B'), gridcolor='rgba(255,255,255,0.05)'),
-                yaxis=dict(tickfont=dict(color='#E2E8F0', size=11), categoryorder='array', categoryarray=['高风险 🔴', '中风险 🟡', '低风险 🟢']),
-                height=200,
+                title=dict(text='各风险等级后验概率分布 (Posterior Probability)', font=dict(color='#E2E8F0', size=13)),
+                xaxis=dict(range=[0, 1], tickformat='.0%', tickfont=dict(color='#64748B'), gridcolor='rgba(255,255,255,0.06)'),
+                yaxis=dict(tickfont=dict(color='#E2E8F0', size=12), categoryorder='array', categoryarray=['高风险 🔴', '中风险 🟡', '低风险 🟢']),
+                height=220,
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
                 margin=dict(l=10, r=20, t=35, b=20)
@@ -370,33 +455,33 @@ def _display_diagnostic_report(prediction, probabilities, model_name):
         else:
             # 纯 HTML/CSS 科技水平进度条优雅降级
             st.markdown(f"""
-            <div style="background: rgba(14, 20, 35, 0.7); border: 1px solid rgba(255,255,255,0.06);
-                        border-radius: 12px; padding: 1.1rem; height: 100%;">
-                <div style="font-size: 0.88rem; font-weight: 600; color: #E2E8F0; margin-bottom: 0.8rem;">
-                    各风险类别后验概率分布 (Class Probability Distribution)
+            <div style="background: rgba(13, 19, 33, 0.75); border: 1px solid rgba(255,255,255,0.08);
+                        border-radius: 14px; padding: 1.2rem; height: 100%;">
+                <div style="font-size: 0.9rem; font-weight: 600; color: #E2E8F0; margin-bottom: 0.9rem;">
+                    各风险等级后验概率分布 (Posterior Probability)
                 </div>
-                <div style="margin-bottom: 0.6rem;">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #94A3B8; margin-bottom: 0.2rem;">
+                <div style="margin-bottom: 0.7rem;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: #94A3B8; margin-bottom: 0.25rem;">
                         <span>低风险 🟢</span><span style="font-family: var(--font-mono); color: #10B981; font-weight: 700;">{p_low:.1%}</span>
                     </div>
-                    <div style="background: rgba(255,255,255,0.06); height: 8px; border-radius: 4px; overflow: hidden;">
-                        <div style="background: #10B981; width: {max(2, int(p_low*100))}%; height: 100%; border-radius: 4px;"></div>
+                    <div style="background: rgba(255,255,255,0.06); height: 10px; border-radius: 5px; overflow: hidden;">
+                        <div style="background: #10B981; width: {max(2, int(p_low*100))}%; height: 100%; border-radius: 5px;"></div>
                     </div>
                 </div>
-                <div style="margin-bottom: 0.6rem;">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #94A3B8; margin-bottom: 0.2rem;">
+                <div style="margin-bottom: 0.7rem;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: #94A3B8; margin-bottom: 0.25rem;">
                         <span>中风险 🟡</span><span style="font-family: var(--font-mono); color: #F59E0B; font-weight: 700;">{p_mid:.1%}</span>
                     </div>
-                    <div style="background: rgba(255,255,255,0.06); height: 8px; border-radius: 4px; overflow: hidden;">
-                        <div style="background: #F59E0B; width: {max(2, int(p_mid*100))}%; height: 100%; border-radius: 4px;"></div>
+                    <div style="background: rgba(255,255,255,0.06); height: 10px; border-radius: 5px; overflow: hidden;">
+                        <div style="background: #F59E0B; width: {max(2, int(p_mid*100))}%; height: 100%; border-radius: 5px;"></div>
                     </div>
                 </div>
                 <div>
-                    <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #94A3B8; margin-bottom: 0.2rem;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: #94A3B8; margin-bottom: 0.25rem;">
                         <span>高风险 🔴</span><span style="font-family: var(--font-mono); color: #EF4444; font-weight: 700;">{p_high:.1%}</span>
                     </div>
-                    <div style="background: rgba(255,255,255,0.06); height: 8px; border-radius: 4px; overflow: hidden;">
-                        <div style="background: #EF4444; width: {max(2, int(p_high*100))}%; height: 100%; border-radius: 4px;"></div>
+                    <div style="background: rgba(255,255,255,0.06); height: 10px; border-radius: 5px; overflow: hidden;">
+                        <div style="background: #EF4444; width: {max(2, int(p_high*100))}%; height: 100%; border-radius: 5px;"></div>
                     </div>
                 </div>
             </div>
@@ -429,16 +514,17 @@ def _display_diagnostic_report(prediction, probabilities, model_name):
 
     ad = advice_registry.get(prediction, advice_registry[1])
     st.markdown(f"""
-    <div style="background: rgba(14, 20, 35, 0.85); border-left: 5px solid {ad['color']}; border-radius: 0 12px 12px 0;
-                padding: 1.1rem 1.4rem; margin-top: 1rem; border-top: 1px solid rgba(255,255,255,0.05);
-                border-bottom: 1px solid rgba(255,255,255,0.05); border-right: 1px solid rgba(255,255,255,0.05);">
-        <div style="font-weight: 700; color: {ad['color']}; font-size: 1.05rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+    <div style="background: rgba(13, 19, 33, 0.9); border-left: 5px solid {ad['color']}; border-radius: 0 14px 14px 0;
+                padding: 1.2rem 1.5rem; margin-top: 1.1rem; border-top: 1px solid rgba(255,255,255,0.06);
+                border-bottom: 1px solid rgba(255,255,255,0.06); border-right: 1px solid rgba(255,255,255,0.06);
+                box-shadow: 0 8px 24px rgba(0,0,0,0.4);">
+        <div style="font-weight: 700; color: {ad['color']}; font-size: 1.08rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
             <span>{ad['icon']}</span><span>{ad['title']}</span>
         </div>
-        <div style="color: #F1F5F9; font-size: 0.9rem; margin-bottom: 0.35rem; line-height: 1.5;">
+        <div style="color: #F1F5F9; font-size: 0.92rem; margin-bottom: 0.4rem; line-height: 1.55;">
             <b>产线执行动作：</b> {ad['action']}
         </div>
-        <div style="color: #94A3B8; font-size: 0.85rem; line-height: 1.5;">
+        <div style="color: #94A3B8; font-size: 0.86rem; line-height: 1.55;">
             <b>机理成因分析：</b> {ad['mechanism']}
         </div>
     </div>
